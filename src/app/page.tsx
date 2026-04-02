@@ -2,11 +2,14 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 
 export default async function Home() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (user) {
-    redirect('/dashboard')
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      redirect('/dashboard')
+    }
+  } catch {
+    // If Supabase is unreachable, just show the landing page
   }
 
   return (
@@ -27,7 +30,7 @@ export default async function Home() {
 
       <section className="max-w-4xl mx-auto px-6 py-24 text-center">
         <div className="inline-flex px-3 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-medium mb-6">
-          AI-Native &middot; Built for Business Brokers
+          AI-Native · Built for Business Brokers
         </div>
         <h2 className="text-5xl font-bold text-slate-900 tracking-tight leading-tight">
           The deal operating system<br />
@@ -68,7 +71,7 @@ export default async function Home() {
 
       <footer className="border-t border-slate-100 py-8">
         <div className="max-w-6xl mx-auto px-6 text-center">
-          <p className="text-sm text-slate-400">&copy; 2026 CRE Resources, LLC. All rights reserved.</p>
+          <p className="text-sm text-slate-400">© 2026 CRE Resources, LLC. All rights reserved.</p>
         </div>
       </footer>
     </div>
