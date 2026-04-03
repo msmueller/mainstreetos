@@ -19,6 +19,8 @@ export async function createValuation(formData: FormData) {
   const annualRevenue = formData.get('annual_revenue')
     ? parseFloat(formData.get('annual_revenue') as string)
     : null
+  const weightingMethod = (formData.get('weighting_method') as string) || 'linear_recent'
+  const ownerCompInOpex = formData.get('owner_comp_in_opex') === 'on'
 
   // Create the valuation record
   const { data: valuation, error: valError } = await supabase
@@ -32,6 +34,8 @@ export async function createValuation(formData: FormData) {
       location: location || null,
       business_description: description || null,
       annual_revenue: annualRevenue,
+      weighting_method: weightingMethod,
+      owner_comp_in_opex: ownerCompInOpex,
       status: 'draft',
     })
     .select()

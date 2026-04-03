@@ -2,23 +2,20 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 
 export default async function Home() {
-  try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      redirect('/dashboard')
-    }
-  } catch {
-    // If Supabase is unreachable, just show the landing page
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (user) {
+    redirect('/dashboard')
   }
 
   return (
     <div className="min-h-screen bg-white">
       <nav className="border-b border-slate-100">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+          <a href="/" className="text-4xl font-bold text-slate-900 tracking-tight hover:opacity-80 transition">
             MainStreet<span className="text-blue-600">OS</span>
-          </h1>
+          </a>
           <div className="flex items-center gap-4">
             <a href="/login" className="text-sm text-slate-600 hover:text-slate-900 transition">Sign In</a>
             <a href="/signup" className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition">
@@ -29,8 +26,8 @@ export default async function Home() {
       </nav>
 
       <section className="max-w-4xl mx-auto px-6 py-24 text-center">
-        <div className="inline-flex px-3 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-medium mb-6">
-          AI-Native · Built for Business Brokers
+        <div className="inline-flex px-4 py-1.5 rounded-full bg-blue-50 text-blue-600 text-base font-bold mb-6">
+          AI-Native &middot; Built for Business Brokers
         </div>
         <h2 className="text-5xl font-bold text-slate-900 tracking-tight leading-tight">
           The deal operating system<br />
@@ -71,7 +68,7 @@ export default async function Home() {
 
       <footer className="border-t border-slate-100 py-8">
         <div className="max-w-6xl mx-auto px-6 text-center">
-          <p className="text-sm text-slate-400">© 2026 CRE Resources, LLC. All rights reserved.</p>
+          <p className="text-sm text-slate-400">&copy; 2026 CRE Resources, LLC. All rights reserved.</p>
         </div>
       </footer>
     </div>

@@ -42,6 +42,9 @@ export interface Valuation {
   status: ValuationStatus
   report_url: string | null
   agent_log: Record<string, unknown>[]
+  year_weights: Record<string, number>
+  weighting_method: string
+  owner_comp_in_opex: boolean
   created_at: string
   updated_at: string
 }

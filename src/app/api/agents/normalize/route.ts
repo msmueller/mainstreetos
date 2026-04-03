@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { runAgent2 } from '@/lib/agents/agent2-normalization'
+import { runAgent3 } from '@/lib/agents/agent3-valuation-methods'
+import { runAgent4 } from '@/lib/agents/agent4-synthesis'
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,25 +35,44 @@ export async function POST(request: NextRequest) {
 
     if (valuation.status !== 'draft') {
       return NextResponse.json(
-        { error: `Valuation is already in "${valuation.status}" status. Agent 2 can only run on draft valuations.` },
+        { error: `Valuation is already in "${valuation.status}" status. Pipeline can only run on draft valuations.` },
         { status: 400 }
       )
     }
 
-    // Run Agent 2
-    const result = await runAgent2(valuation_id)
+    // Run Agent Pipeline: 2 → 3 → 4
+    // Agent 2: Normalization & Metric Selection
+    const agent2Result = await runAgent2(valuation_id)
+
+    // Agent 3: Multi-Method Valuation (with Open Brain queries)
+    const agent3Result = await runAgent3(valuation_id)
+
+    // Agent 4: Synthesis & Range (auto-captures to Open Brain)
+    const agent4Result = await runAgent4(valuation_id)
 
     return NextResponse.json({
       success: true,
-      metric_type: result.metric_type,
-      normalized_earnings: result.normalized_earnings,
-      adjustments_count: result.adjustments.length,
-      reasoning: result.reasoning,
+      pipeline: 'complete',
+      agent_2: {
+        metric_type: agent2Result.metric_type,
+        normalized_earnings: agent2Result.normalized_earnings,
+        adjustments_count: agent2Result.adjustments.length,
+      },
+      agent_3: {
+        methods_count: agent3Result.methods.length,
+        weighted_value: agent3Result.weighted_value,
+        open_brain_context_found: agent3Result.open_brain_context.length > 0,
+      },
+      agent_4: {
+        valuation_low: agent4Result.valuation_low,
+        valuation_mid: agent4Result.valuation_mid,
+        valuation_high: agent4Result.valuation_high,
+      },
     })
   } catch (error) {
-    console.error('Agent 2 error:', error)
+    console.error('Agent pipeline error:', error)
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Agent 2 failed' },
+      { error: error instanceof Error ? error.message : 'Agent pipeline failed' },
       { status: 500 }
     )
   }
