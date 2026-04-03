@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import type { Valuation, FinancialData, ValuationMethod } from '@/lib/types'
+import RunAgentsButton from './run-agents-button'
 
 export default async function ValuationDetailPage({
   params,
@@ -72,6 +73,22 @@ export default async function ValuationDetailPage({
         </div>
       )}
 
+      {/* Intermediate Result: Agent 2 completed but not final valuation yet */}
+      {v.metric_type && v.normalized_earnings && !v.valuation_mid && (
+        <div className="bg-gradient-to-r from-slate-700 to-slate-800 rounded-xl p-6 mb-6 text-white">
+          <p className="text-sm font-medium text-slate-300">Agent 2 Complete — Normalized Earnings</p>
+          <div className="flex items-baseline gap-3 mt-1">
+            <p className="text-3xl font-bold">${v.normalized_earnings.toLocaleString()}</p>
+            <span className="px-2 py-0.5 rounded bg-slate-600 text-xs font-medium text-slate-200">
+              {v.metric_type.toUpperCase()}
+            </span>
+          </div>
+          <p className="text-sm text-slate-400 mt-2">
+            Metric auto-selected. Normalizing adjustments applied. Awaiting multi-method valuation (Agent 3).
+          </p>
+        </div>
+      )}
+
       {/* Agent Pipeline Status */}
       {v.status !== 'complete' && (
         <div className="bg-white rounded-xl border border-slate-200 p-6 mb-6">
@@ -84,16 +101,7 @@ export default async function ValuationDetailPage({
             <PipelineStep step={5} label="Report Generation" status={v.report_url ? 'complete' : 'pending'} />
           </div>
 
-          {v.status === 'draft' && (
-            <div className="mt-4 pt-4 border-t border-slate-100">
-              <p className="text-sm text-slate-500 mb-3">
-                Financial data entered. Ready to run the valuation pipeline.
-              </p>
-              <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition">
-                Run Valuation Agents
-              </button>
-            </div>
-          )}
+          <RunAgentsButton valuationId={v.id} status={v.status} />
         </div>
       )}
 
