@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { runAgent2 } from '@/lib/agents/agent2-normalization'
 import { runAgent3 } from '@/lib/agents/agent3-valuation-methods'
 import { runAgent4 } from '@/lib/agents/agent4-synthesis'
+import { toBrokerLicense } from '@/lib/types'
+import type { SubscriptionTier } from '@/lib/types'
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,10 +23,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'valuation_id is required' }, { status: 400 })
     }
 
-    // Verify the user owns this valuation
+    // Verify the user owns this valuation and fetch deal size
     const { data: valuation } = await supabase
       .from('valuations')
-      .select('id, user_id, status')
+      .select('id, user_id, status, annual_revenue')
       .eq('id', valuation_id)
       .eq('user_id', user.id)
       .single()
@@ -40,9 +42,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Fetch broker license from user profile
+    const { data: profile } = await supabase
+      .from('users')
+      .select('subscription_tier')
+      .eq('id', user.id)
+      .single()
+    const brokerLicense = toBrokerLicense((profile?.subscription_tier as SubscriptionTier) || 'free')
+
     // Run Agent Pipeline: 2 → 3 → 4
+    const dealSizeUsd = Number(valuation.annual_revenue) || undefined
+
     // Agent 2: Normalization & Metric Selection
-    const agent2Result = await runAgent2(valuation_id)
+    const agent2Result = await runAgent2(valuation_id, brokerLicense, dealSizeUsd)
 
     // Agent 3: Multi-Method Valuation (with Open Brain queries)
     const agent3Result = await runAgent3(valuation_id)

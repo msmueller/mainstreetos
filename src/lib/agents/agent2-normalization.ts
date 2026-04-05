@@ -7,7 +7,8 @@
 //   - custom: User-defined weights from year_weights JSONB field
 
 import { createClient } from '@supabase/supabase-js'
-import type { FinancialData } from '@/lib/types'
+import type { FinancialData, BrokerLicense } from '@/lib/types'
+import { resolveModel } from '@/lib/modelRouter'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -42,7 +43,7 @@ interface AgentResult {
   agent_log_entry: Record<string, unknown>
 }
 
-export async function runAgent2(valuationId: string): Promise<AgentResult> {
+export async function runAgent2(valuationId: string, brokerLicense: BrokerLicense = 'premium', dealSizeUsd?: number): Promise<AgentResult> {
   const supabase = getServiceClient()
 
   const { data: valuation, error: valError } = await supabase
@@ -82,7 +83,8 @@ export async function runAgent2(valuationId: string): Promise<AgentResult> {
   ) / 100
 
   const llmAnalysis = await analyzeNormalizingAdjustments(
-    valuation, yearMetrics, metricSelection.metric_type, weightedEarnings
+    valuation, yearMetrics, metricSelection.metric_type, weightedEarnings, brokerLicense,
+    valuation.user_id as string, dealSizeUsd ?? annualRevenue, supabase,
   )
 
   const totalAdjustments = llmAnalysis.adjustments.reduce((sum, a) => sum + a.amount, 0)
@@ -246,6 +248,9 @@ interface AdjustmentAnalysis {
 async function analyzeNormalizingAdjustments(
   valuation: Record<string, unknown>, yearMetrics: YearMetrics[],
   metricType: 'sde' | 'ebitda', weightedEarnings: number,
+  brokerLicense: BrokerLicense = 'premium',
+  brokerId?: string, dealSizeUsd?: number,
+  supabase?: ReturnType<typeof getServiceClient>,
 ): Promise<AdjustmentAnalysis> {
   const openrouterKey = process.env.OPENROUTER_API_KEY
   if (!openrouterKey) return generateDefaultAdjustments(yearMetrics, metricType)
@@ -274,6 +279,10 @@ RESPOND IN THIS EXACT JSON FORMAT ONLY:
 {"adjustments":[{"line_item":"desc","category":"adjustment","amount":12000,"reason":"explanation"}],"reasoning":"Overall assessment..."}`
 
   try {
+    const { model, tier, reason } = resolveModel({ task: 'val.normalizeFinancials', license: brokerLicense, dealSizeUsd })
+    const openRouterModel = `anthropic/${model}`
+    console.log(`[Agent 2] ${tier} → ${openRouterModel} | ${reason}`)
+
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -283,7 +292,7 @@ RESPOND IN THIS EXACT JSON FORMAT ONLY:
         'X-Title': 'MainStreetOS Agent 2',
       },
       body: JSON.stringify({
-        model: 'anthropic/claude-sonnet-4-20250514',
+        model: openRouterModel,
         max_tokens: 2000,
         messages: [{ role: 'user', content: prompt }],
       }),
@@ -292,6 +301,25 @@ RESPOND IN THIS EXACT JSON FORMAT ONLY:
     if (!response.ok) return generateDefaultAdjustments(yearMetrics, metricType)
     const data = await response.json()
     const content = data.choices?.[0]?.message?.content || ''
+    const inputTokens = data.usage?.prompt_tokens as number | undefined
+    const outputTokens = data.usage?.completion_tokens as number | undefined
+
+    // Log routing result to ai_routing_log
+    if (supabase && brokerId) {
+      supabase.from('ai_routing_log').insert({
+        broker_id: brokerId,
+        task: 'val.normalizeFinancials',
+        tier,
+        model: openRouterModel,
+        input_tokens: inputTokens ?? null,
+        output_tokens: outputTokens ?? null,
+        deal_size_usd: dealSizeUsd ?? null,
+        reason,
+      }).then(({ error: logErr }) => {
+        if (logErr) console.error('[Agent 2] Failed to log routing:', logErr.message)
+      })
+    }
+
     const cleaned = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
     const parsed = JSON.parse(cleaned)
     return { adjustments: parsed.adjustments || [], reasoning: parsed.reasoning || 'LLM analysis completed.' }

@@ -93,6 +93,12 @@ export interface FinancialLineItem {
   amount: number
 }
 
+// Map subscription tier → model router broker license
+export type BrokerLicense = 'standard' | 'premium'
+export function toBrokerLicense(tier: SubscriptionTier): BrokerLicense {
+  return tier === 'professional' || tier === 'enterprise' ? 'premium' : 'standard'
+}
+
 // Tier limits
 export const TIER_LIMITS: Record<SubscriptionTier, number> = {
   free: 1,
