@@ -13,7 +13,7 @@ export default async function Home() {
     <div className="min-h-screen bg-white">
       <nav className="border-b border-slate-100">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <a href="/" className="text-4xl font-bold text-slate-900 tracking-tight hover:opacity-80 transition">
+          <a href="/" className="text-7xl font-bold text-slate-900 tracking-tight hover:opacity-80 transition">
             MainStreet<span className="text-blue-600">OS</span>
           </a>
           <div className="flex items-center gap-4">

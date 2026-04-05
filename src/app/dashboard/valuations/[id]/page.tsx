@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import type { Valuation, FinancialData, ValuationMethod } from '@/lib/types'
 import RunAgentsButton from './run-agents-button'
+import GenerateReportButton from './generate-report-button'
 
 export default async function ValuationDetailPage({
   params,
@@ -73,6 +74,20 @@ export default async function ValuationDetailPage({
         </div>
       )}
 
+      {/* Report download link (when complete) */}
+      {v.status === 'complete' && v.report_url && !v.report_url.startsWith('local://') && (
+        <div className="mb-6">
+          <a
+            href={v.report_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition"
+          >
+            <span>📄</span> Download Business Valuation Report (DOCX)
+          </a>
+        </div>
+      )}
+
       {/* Intermediate Result: Agent 2 completed but not final valuation yet */}
       {v.metric_type && v.normalized_earnings && !v.valuation_mid && (
         <div className="bg-gradient-to-r from-slate-700 to-slate-800 rounded-xl p-6 mb-6 text-white">
@@ -102,6 +117,7 @@ export default async function ValuationDetailPage({
           </div>
 
           <RunAgentsButton valuationId={v.id} status={v.status} />
+          <GenerateReportButton valuationId={v.id} status={v.status} reportUrl={v.report_url} />
         </div>
       )}
 

@@ -151,6 +151,7 @@ function calculateYearMetrics(
   const amortization = sum('amortization')
   const interest = sum('interest')
   const taxes = sum('taxes')
+  const sdeAddbacks = sum('sde_addback') // Broker-identified discretionary add-backs
 
   let netIncome: number
   if (ownerCompInOpex) {
@@ -162,7 +163,8 @@ function calculateYearMetrics(
   }
 
   const ebitda = netIncome + depreciation + amortization + interest + taxes
-  const sde = ebitda + ownerCompensation
+  // SDE = EBITDA + Owner Comp + D&A (already in EBITDA) + broker add-backs
+  const sde = ebitda + ownerCompensation + sdeAddbacks
 
   return {
     fiscal_year: year, totalRevenue, totalCOGS, grossProfit, grossMargin,

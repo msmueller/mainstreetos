@@ -299,6 +299,63 @@ function runDCF(
   }
 }
 
+// Rate-aware versions that use broker-entered discount/cap rates from Risk Analysis
+function runCapOfEarningsWithRates(
+  normalizedEarnings: number,
+  capRate: number,
+  csrp: CSRPScore,
+  industry: string | null,
+  discountRate: number,
+): MethodResult {
+  const value = capRate > 0 ? Math.round(normalizedEarnings / capRate) : 0
+
+  return {
+    method: 'capitalization_of_earnings',
+    result_value: value,
+    weight: 0.25,
+    multiple_used: null,
+    cap_rate: Math.round(capRate * 10000) / 10000,
+    discount_rate: Math.round(discountRate * 10000) / 10000,
+    csrp_score: csrp,
+    reasoning: `Capitalization rate of ${(capRate * 100).toFixed(1)}% (from Risk Analysis build-up: discount rate ${(discountRate * 100).toFixed(1)}% minus growth). Normalized earnings $${normalizedEarnings.toLocaleString()} / ${(capRate * 100).toFixed(1)}% = $${value.toLocaleString()}.`,
+  }
+}
+
+function runDCFWithRates(
+  normalizedEarnings: number,
+  discountRate: number,
+  growthRate: number,
+  csrp: CSRPScore,
+): MethodResult {
+  const terminalGrowthRate = 0.02
+
+  let totalPV = 0
+  for (let year = 1; year <= 5; year++) {
+    const cashFlow = normalizedEarnings * Math.pow(1 + growthRate, year)
+    const pv = cashFlow / Math.pow(1 + discountRate, year)
+    totalPV += pv
+  }
+
+  const year5CashFlow = normalizedEarnings * Math.pow(1 + growthRate, 5)
+  const terminalValue = discountRate > terminalGrowthRate
+    ? (year5CashFlow * (1 + terminalGrowthRate)) / (discountRate - terminalGrowthRate)
+    : 0
+  const pvTerminal = terminalValue / Math.pow(1 + discountRate, 5)
+
+  const value = Math.round(totalPV + pvTerminal)
+
+  return {
+    method: 'dcf',
+    result_value: value,
+    weight: 0.20,
+    multiple_used: null,
+    cap_rate: null,
+    discount_rate: Math.round(discountRate * 10000) / 10000,
+    csrp_score: null,
+    reasoning: `5-year DCF using Risk Analysis discount rate of ${(discountRate * 100).toFixed(1)}%, ${(growthRate * 100).toFixed(1)}% growth, ${(terminalGrowthRate * 100).toFixed(1)}% terminal growth. PV of cash flows: $${Math.round(totalPV).toLocaleString()}. PV of terminal value: $${Math.round(pvTerminal).toLocaleString()}. Total: $${value.toLocaleString()}.`,
+  }
+}
+
 function runAssetBased(
   annualRevenue: number,
   industry: string | null,
@@ -399,14 +456,48 @@ export async function runAgent3(valuationId: string): Promise<Agent3Result> {
   // 3. Get industry benchmarks
   const benchmark = getBenchmark(industry)
 
-  // 4. Calculate CSRP
-  const csrp = calculateCSRP(annualRevenue, industry, metricType)
+  // 4. Check for broker-entered risk factors
+  const { data: riskRow } = await supabase
+    .from('risk_factors')
+    .select('*')
+    .eq('valuation_id', valuationId)
+    .single()
 
-  // 5. Run all 5 methods
+  // Use broker-entered rates if available, otherwise fall back to defaults
+  let csrp: CSRPScore
+  let discountRate: number
+  let capRate: number
+  let growthRate: number
+
+  if (riskRow && riskRow.discount_rate) {
+    // Broker entered risk analysis — use their computed rates
+    discountRate = Number(riskRow.discount_rate)
+    capRate = Number(riskRow.capitalization_rate)
+    growthRate = Number(riskRow.long_term_growth_rate) || 0.02
+    csrp = {
+      management_depth: Number(riskRow.owner_dependence_score || 3) * Number(riskRow.owner_dependence_weight || 0.10) * 0.01,
+      customer_concentration: Number(riskRow.customer_concentration_score || 3) * Number(riskRow.customer_concentration_weight || 0.06) * 0.01,
+      revenue_stability: Number(riskRow.revenue_trend_score || 3) * Number(riskRow.revenue_trend_weight || 0.08) * 0.01,
+      industry_risk: Number(riskRow.industry_stability_score || 3) * Number(riskRow.industry_stability_weight || 0.08) * 0.01,
+      competitive_position: Number(riskRow.competitive_position_score || 3) * Number(riskRow.competitive_position_weight || 0.08) * 0.01,
+      growth_trajectory: 0,
+      asset_quality: Number(riskRow.facility_equipment_score || 3) * Number(riskRow.facility_equipment_weight || 0.05) * 0.01,
+      location_dependency: Number(riskRow.lease_position_score || 3) * Number(riskRow.lease_position_weight || 0.05) * 0.01,
+      total: Number(riskRow.csrp_premium) || 0.10,
+    }
+  } else {
+    // No risk factors entered — use default CSRP
+    csrp = calculateCSRP(annualRevenue, industry, metricType)
+    discountRate = benchmark.risk_free_rate + benchmark.equity_risk_premium + benchmark.size_premium + csrp.total
+    capRate = discountRate - benchmark.typical_growth_rate
+    growthRate = benchmark.typical_growth_rate
+  }
+
+  // 5. Run all 5 methods (pass real rates)
   const methods: MethodResult[] = [
     runMarketMultiple(normalizedEarnings, metricType, benchmark, industry),
-    runCapOfEarnings(normalizedEarnings, benchmark, csrp, industry),
-    runDCF(normalizedEarnings, benchmark, csrp),
+    runCapOfEarningsWithRates(normalizedEarnings, capRate, csrp, industry, discountRate),
+    runDCFWithRates(normalizedEarnings, discountRate, growthRate, csrp),
     runAssetBased(annualRevenue, industry),
     runRuleOfThumb(annualRevenue, normalizedEarnings, industry),
   ]

@@ -7,7 +7,7 @@ export type EarningsMetric = 'sde' | 'ebitda'
 export type FinancialCategory =
   | 'revenue' | 'cogs' | 'operating_expense' | 'non_operating'
   | 'owner_compensation' | 'depreciation' | 'amortization'
-  | 'interest' | 'taxes' | 'adjustment'
+  | 'interest' | 'taxes' | 'adjustment' | 'sde_addback'
 export type ValuationMethodType =
   | 'market_multiple' | 'capitalization_of_earnings' | 'dcf'
   | 'asset_based' | 'rule_of_thumb'

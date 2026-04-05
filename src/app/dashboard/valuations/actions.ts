@@ -78,5 +78,46 @@ export async function createValuation(formData: FormData) {
     // RPC may not exist yet — that's fine
   }
 
+  // Save risk factors if provided
+  const riskFreeRate = formData.get('risk_free_rate')
+  if (riskFreeRate) {
+    const riskKeys = [
+      'industry_stability', 'competitive_position', 'customer_concentration',
+      'supplier_dependence', 'regulatory_environment', 'revenue_trend',
+      'profit_margin_stability', 'working_capital', 'debt_level',
+      'financial_records_quality', 'owner_dependence', 'key_employee_risk',
+      'systems_processes', 'facility_equipment', 'lease_position',
+    ]
+
+    const riskData: Record<string, unknown> = {
+      valuation_id: valuation.id,
+      risk_free_rate: parseFloat(riskFreeRate as string),
+      equity_risk_premium: parseFloat(formData.get('equity_risk_premium') as string),
+      size_premium: parseFloat(formData.get('size_premium') as string),
+      long_term_growth_rate: parseFloat(formData.get('long_term_growth_rate') as string),
+      discount_rate: parseFloat(formData.get('computed_discount_rate') as string),
+      capitalization_rate: parseFloat(formData.get('computed_cap_rate') as string),
+    }
+
+    for (const key of riskKeys) {
+      const score = formData.get(`risk_${key}_score`)
+      const weight = formData.get(`risk_${key}_weight`)
+      if (score) riskData[`${key}_score`] = parseInt(score as string)
+      if (weight) riskData[`${key}_weight`] = parseFloat(weight as string)
+    }
+
+    // Compute weighted risk score and CSRP
+    let weightedScore = 0
+    for (const key of riskKeys) {
+      const s = riskData[`${key}_score`] as number || 3
+      const w = riskData[`${key}_weight`] as number || 0.05
+      weightedScore += s * w
+    }
+    riskData.weighted_risk_score = weightedScore
+    riskData.csrp_premium = weightedScore * 0.05
+
+    await supabase.from('risk_factors').insert(riskData)
+  }
+
   redirect(`/dashboard/valuations/${valuation.id}`)
 }
