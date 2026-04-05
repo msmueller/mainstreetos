@@ -13,9 +13,12 @@ export default async function Home() {
     <div className="min-h-screen bg-white">
       <nav className="border-b border-slate-100">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <a href="/" className="text-7xl font-bold text-slate-900 tracking-tight hover:opacity-80 transition">
-            MainStreet<span className="text-blue-600">OS</span>
-          </a>
+          <div className="flex flex-col">
+            <a href="/" className="text-5xl font-bold text-slate-900 tracking-tight hover:opacity-80 transition">
+              MainStreet<span className="text-blue-600">OS</span>
+            </a>
+            <p className="text-xs text-slate-400 mt-1 tracking-wide">AI-Native Deal Operating System</p>
+          </div>
           <div className="flex items-center gap-4">
             <a href="/login" className="text-sm text-slate-600 hover:text-slate-900 transition">Sign In</a>
             <a href="/signup" className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition">
@@ -27,7 +30,7 @@ export default async function Home() {
 
       <section className="max-w-4xl mx-auto px-6 py-24 text-center">
         <div className="inline-flex px-4 py-1.5 rounded-full bg-blue-50 text-blue-600 text-base font-bold mb-6">
-          AI-Native &middot; Built for Business Brokers
+          AI-Native &middot; Built for Business Brokers &middot; Built by Business Brokers
         </div>
         <h2 className="text-5xl font-bold text-slate-900 tracking-tight leading-tight">
           The deal operating system<br />
