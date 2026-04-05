@@ -13,12 +13,12 @@ export default async function SignupPage({
       <div className="w-full max-w-md">
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
           <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-              MainStreet<span className="text-blue-600">OS<span style={{ fontSize: '0.45em', fontWeight: 400, verticalAlign: 'super', letterSpacing: 0 }}>™</span></span>
-            </h1>
-            <p className="text-sm text-slate-500 mt-1">
-              Create your account
-            </p>
+            <a href="/" className="block text-center hover:opacity-80 transition">
+              <div>
+                <span className="text-2xl font-bold text-slate-900 tracking-tight">MainStreet</span><span className="text-2xl font-bold text-blue-600 tracking-tight">OS</span><span className="text-xs text-slate-400 align-super ml-0.5">™</span>
+              </div>
+              <p className="text-sm font-semibold text-slate-500 tracking-wide mt-1">AI-Native Deal Operating System</p>
+            </a>
           </div>
 
           {error && (

@@ -26,11 +26,11 @@ export default async function DashboardLayout({
       {/* Sidebar */}
       <aside className="w-64 bg-white border-r border-slate-200 flex flex-col">
         {/* Logo */}
-        <a href="/" className="block p-5 border-b border-slate-100 hover:bg-slate-50 transition">
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight leading-none">
-            MainStreet<span className="text-blue-600">OS<span style={{ fontSize: '0.45em', fontWeight: 400, verticalAlign: 'super', letterSpacing: 0 }}>™</span></span>
-          </h1>
-          <p className="text-xs text-slate-400 mt-1 tracking-wide">AI-Native Deal Operating System</p>
+        <a href="/" className="block p-5 border-b border-slate-100 text-center hover:bg-slate-50 transition">
+          <div>
+            <span className="text-lg font-bold text-slate-900 tracking-tight">MainStreet</span><span className="text-lg font-bold text-blue-600 tracking-tight">OS</span><span className="text-xs text-slate-400 align-super ml-0.5">™</span>
+          </div>
+          <p className="text-sm font-semibold text-slate-500 tracking-wide mt-1">AI-Native Deal Operating System</p>
         </a>
 
         {/* Navigation */}
