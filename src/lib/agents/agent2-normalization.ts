@@ -6,9 +6,12 @@
 //   - equal: All years weighted equally
 //   - custom: User-defined weights from year_weights JSONB field
 
+import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
 import type { FinancialData, BrokerLicense } from '@/lib/types'
 import { resolveModel } from '@/lib/modelRouter'
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -252,8 +255,7 @@ async function analyzeNormalizingAdjustments(
   brokerId?: string, dealSizeUsd?: number,
   supabase?: ReturnType<typeof getServiceClient>,
 ): Promise<AdjustmentAnalysis> {
-  const openrouterKey = process.env.OPENROUTER_API_KEY
-  if (!openrouterKey) return generateDefaultAdjustments(yearMetrics, metricType)
+  if (!process.env.ANTHROPIC_API_KEY) return generateDefaultAdjustments(yearMetrics, metricType)
 
   const yearSummary = yearMetrics.map(ym =>
     `FY${ym.fiscal_year}: Revenue $${ym.totalRevenue.toLocaleString()}, COGS $${ym.totalCOGS.toLocaleString()}, OpEx $${ym.totalOperatingExpenses.toLocaleString()}, Owner Comp $${ym.ownerCompensation.toLocaleString()}, D&A $${(ym.depreciation + ym.amortization).toLocaleString()}, EBITDA $${ym.ebitda.toLocaleString()}, SDE $${ym.sde.toLocaleString()}`
@@ -280,29 +282,17 @@ RESPOND IN THIS EXACT JSON FORMAT ONLY:
 
   try {
     const { model, tier, reason } = resolveModel({ task: 'val.normalizeFinancials', license: brokerLicense, dealSizeUsd })
-    const openRouterModel = `anthropic/${model}`
-    console.log(`[Agent 2] ${tier} → ${openRouterModel} | ${reason}`)
+    console.log(`[Agent 2] ${tier} → ${model} | ${reason}`)
 
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openrouterKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://mainstreetos.vercel.app',
-        'X-Title': 'MainStreetOS Agent 2',
-      },
-      body: JSON.stringify({
-        model: openRouterModel,
-        max_tokens: 2000,
-        messages: [{ role: 'user', content: prompt }],
-      }),
+    const response = await anthropic.messages.create({
+      model,
+      max_tokens: 2000,
+      messages: [{ role: 'user', content: prompt }],
     })
 
-    if (!response.ok) return generateDefaultAdjustments(yearMetrics, metricType)
-    const data = await response.json()
-    const content = data.choices?.[0]?.message?.content || ''
-    const inputTokens = data.usage?.prompt_tokens as number | undefined
-    const outputTokens = data.usage?.completion_tokens as number | undefined
+    const content = response.content[0]?.type === 'text' ? response.content[0].text : ''
+    const inputTokens = response.usage?.input_tokens
+    const outputTokens = response.usage?.output_tokens
 
     // Log routing result to ai_routing_log
     if (supabase && brokerId) {
@@ -310,7 +300,7 @@ RESPOND IN THIS EXACT JSON FORMAT ONLY:
         broker_id: brokerId,
         task: 'val.normalizeFinancials',
         tier,
-        model: openRouterModel,
+        model,
         input_tokens: inputTokens ?? null,
         output_tokens: outputTokens ?? null,
         deal_size_usd: dealSizeUsd ?? null,
