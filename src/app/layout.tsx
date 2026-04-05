@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "MainStreetOS — AI-Native Deal Operating System",
+  title: "MainStreetOS™ — AI-Native Deal Operating System",
   description: "AI-powered business valuations, deal documents, and pipeline management for business brokers.",
 };
 

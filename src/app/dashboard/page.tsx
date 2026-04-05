@@ -34,7 +34,7 @@ export default async function DashboardPage() {
           Welcome back, {user.full_name.split(' ')[0]}
         </h2>
         <p className="text-slate-500 mt-1">
-          Here&apos;s an overview of your MainStreetOS activity.
+          Here&apos;s an overview of your MainStreetOS<span style={{ fontSize: '0.7em', fontWeight: 400, verticalAlign: 'super' }}>™</span> activity.
         </p>
       </div>
 

@@ -15,7 +15,7 @@ export default async function Home() {
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex flex-col">
             <a href="/" className="text-5xl font-bold text-slate-900 tracking-tight hover:opacity-80 transition">
-              MainStreet<span className="text-blue-600">OS</span>
+              MainStreet<span className="text-blue-600">OS<span style={{ fontSize: '0.45em', fontWeight: 400, verticalAlign: 'super', letterSpacing: 0 }}>™</span></span>
             </a>
             <p className="text-xs text-slate-400 mt-1 tracking-wide">AI-Native Deal Operating System</p>
           </div>
@@ -37,7 +37,7 @@ export default async function Home() {
           that <span className="text-blue-600">gets smarter</span> with every deal
         </h2>
         <p className="text-lg text-slate-500 mt-6 max-w-2xl mx-auto leading-relaxed">
-          MainStreetOS automates business valuations, generates deal documents, manages your pipeline, and builds institutional memory that compounds across every deal you work.
+          MainStreetOS<span style={{ fontSize: '0.7em', fontWeight: 400, verticalAlign: 'super' }}>™</span> automates business valuations, generates deal documents, manages your pipeline, and builds institutional memory that compounds across every deal you work.
         </p>
         <div className="flex items-center justify-center gap-4 mt-10">
           <a href="/signup" className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition text-sm">
@@ -71,7 +71,7 @@ export default async function Home() {
 
       <footer className="border-t border-slate-100 py-8">
         <div className="max-w-6xl mx-auto px-6 text-center">
-          <p className="text-sm text-slate-400">&copy; 2026 CRE Resources, LLC. All rights reserved.</p>
+          <p className="text-sm text-slate-400">&copy; 2026 CRE Resources, LLC. MainStreetOS<span style={{ fontSize: '0.7em', fontWeight: 400, verticalAlign: 'super' }}>™</span>. All rights reserved.</p>
         </div>
       </footer>
     </div>

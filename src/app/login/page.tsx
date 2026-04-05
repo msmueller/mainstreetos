@@ -15,7 +15,7 @@ export default async function LoginPage({
           {/* Header */}
           <div className="text-center mb-8">
             <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-              MainStreet<span className="text-blue-600">OS</span>
+              MainStreet<span className="text-blue-600">OS<span style={{ fontSize: '0.45em', fontWeight: 400, verticalAlign: 'super', letterSpacing: 0 }}>™</span></span>
             </h1>
             <p className="text-sm text-slate-500 mt-1">
               AI-Native Deal Operating System
@@ -78,7 +78,7 @@ export default async function LoginPage({
         </div>
 
         <p className="text-center text-xs text-slate-400 mt-6">
-          &copy; 2026 CRE Resources, LLC. All rights reserved.
+          &copy; 2026 CRE Resources, LLC. MainStreetOS<span style={{ fontSize: '0.7em', fontWeight: 400, verticalAlign: 'super' }}>™</span>. All rights reserved.
         </p>
       </div>
     </div>

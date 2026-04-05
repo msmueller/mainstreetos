@@ -28,7 +28,7 @@ export default async function DashboardLayout({
         {/* Logo */}
         <a href="/" className="block p-5 border-b border-slate-100 hover:bg-slate-50 transition">
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight leading-none">
-            MainStreet<span className="text-blue-600">OS</span>
+            MainStreet<span className="text-blue-600">OS<span style={{ fontSize: '0.45em', fontWeight: 400, verticalAlign: 'super', letterSpacing: 0 }}>™</span></span>
           </h1>
           <p className="text-xs text-slate-400 mt-1 tracking-wide">AI-Native Deal Operating System</p>
         </a>
