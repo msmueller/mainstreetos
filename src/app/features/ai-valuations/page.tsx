@@ -11,6 +11,7 @@ function Nav() {
         </a>
         <div className="flex items-center gap-4">
           <a href="/how-it-works" className="text-sm text-slate-600 hover:text-slate-900 transition">How It Works</a>
+          <a href="/uspap-standards" className="text-sm text-slate-600 hover:text-slate-900 transition">USPAP Standards</a>
           <a href="/signup" className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition">Get Started Free</a>
         </div>
       </div>
@@ -195,12 +196,17 @@ export default function AIValuationsPage() {
           ].map((method) => (
             <a key={method.name} href={method.slug} className="block bg-white border border-slate-200 rounded-xl p-4 text-center hover:border-blue-200 hover:shadow-md transition group">
               <span className="text-2xl">{method.icon}</span>
-              <h4 className="text-sm font-bold text-slate-900 mt-3">{method.name}</h4>
+              <h4 className="text-sm font-bold text-slate-900 mt-3 group-hover:text-blue-600 transition">{method.name}</h4>
               <p className="text-xs text-slate-500 mt-2 leading-relaxed">{method.desc}</p>
               <p className="text-xs text-blue-600 font-bold mt-3 group-hover:underline">Learn more →</p>
             </a>
           ))}
         </div>
+        <p className="text-center text-sm text-slate-500 mt-6">
+          All five methods are applied in accordance with{' '}
+          <a href="/uspap-standards" className="text-blue-600 hover:underline font-medium">USPAP Standards 9 &amp; 10</a>
+          {' '}— the nationally recognized quality control standards for business valuation.
+        </p>
       </section>
 
       {/* CTA */}
