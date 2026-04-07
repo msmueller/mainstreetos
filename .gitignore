@@ -5,3 +5,6 @@ node_modules/
 .DS_Store
 *.tsbuildinfo
 .vercel
+
+# Copyrighted reference PDFs (local-only, see docs/references/README.md)
+docs/references/*.pdf
