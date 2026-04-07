@@ -187,17 +187,18 @@ export default function AIValuationsPage() {
         <p className="text-slate-500 text-center mb-10">Every valuation uses all five — weighted by relevance to produce a defensible range</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           {[
-            { name: 'Market Multiple', desc: 'Industry SDE/EBITDA multiples applied to normalized earnings', icon: '📈' },
-            { name: 'Cap of Earnings', desc: 'Normalized earnings divided by risk-adjusted capitalization rate', icon: '🏦' },
-            { name: 'DCF', desc: 'Discounted future cash flows using CSRP-derived discount rate', icon: '💰' },
-            { name: 'Asset-Based', desc: 'Fair market value of tangible and intangible business assets', icon: '🏗️' },
-            { name: 'Rule of Thumb', desc: 'Industry-specific revenue or earnings multipliers', icon: '📏' },
+            { name: 'Market Multiple', desc: 'Industry SDE/EBITDA multiples applied to normalized earnings', icon: '📈', slug: '/methods/market-multiple' },
+            { name: 'Cap of Earnings', desc: 'Normalized earnings divided by risk-adjusted capitalization rate', icon: '🏦', slug: '/methods/capitalization-of-earnings' },
+            { name: 'DCF', desc: 'Discounted future cash flows using CSRP-derived discount rate', icon: '💰', slug: '/methods/discounted-cash-flow' },
+            { name: 'Asset-Based', desc: 'Fair market value of tangible and intangible business assets', icon: '🏗️', slug: '/methods/asset-based' },
+            { name: 'Rule of Thumb', desc: 'Industry-specific revenue or earnings multipliers', icon: '📏', slug: '/methods/rule-of-thumb' },
           ].map((method) => (
-            <div key={method.name} className="bg-white border border-slate-200 rounded-xl p-4 text-center hover:border-blue-200 hover:shadow-md transition">
+            <a key={method.name} href={method.slug} className="block bg-white border border-slate-200 rounded-xl p-4 text-center hover:border-blue-200 hover:shadow-md transition group">
               <span className="text-2xl">{method.icon}</span>
               <h4 className="text-sm font-bold text-slate-900 mt-3">{method.name}</h4>
               <p className="text-xs text-slate-500 mt-2 leading-relaxed">{method.desc}</p>
-            </div>
+              <p className="text-xs text-blue-600 font-bold mt-3 group-hover:underline">Learn more →</p>
+            </a>
           ))}
         </div>
       </section>
