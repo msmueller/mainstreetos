@@ -43,7 +43,7 @@ export default async function Home() {
           <a href="/signup" className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition text-sm">
             Start Free Valuation
           </a>
-          <a href="#features" className="px-6 py-3 border border-slate-400 text-slate-900 hover:bg-slate-100 font-bold rounded-lg transition text-sm">
+          <a href="/how-it-works" className="px-6 py-3 border border-slate-400 text-slate-900 hover:bg-slate-100 font-bold rounded-lg transition text-sm">
             See How It Works
           </a>
           <a href="/brochure.html" target="_blank" className="px-6 py-3 border border-slate-400 text-slate-900 hover:bg-slate-100 font-bold rounded-lg transition text-sm">
