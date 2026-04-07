@@ -6,5 +6,7 @@ node_modules/
 *.tsbuildinfo
 .vercel
 
-# Copyrighted reference PDFs (local-only, see docs/references/README.md)
+# Copyrighted reference materials (local-only, see docs/references/README.md)
 docs/references/*.pdf
+docs/references/*.md
+!docs/references/README.md
