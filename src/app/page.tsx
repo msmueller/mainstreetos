@@ -53,7 +53,7 @@ export default async function Home() {
       </section>
 
       <section id="features" className="max-w-6xl mx-auto px-6 py-8">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <a href="/features/ai-valuations" className="p-4 rounded-xl border border-slate-200 hover:border-blue-500 hover:shadow-sm transition block">
             <div className="text-2xl mb-2">📈</div>
             <h3 className="text-base font-semibold text-slate-900 mb-2">AI-Agentic Valuations</h3>
@@ -70,6 +70,12 @@ export default async function Home() {
             <div className="text-2xl mb-2">📄</div>
             <h3 className="text-base font-semibold text-slate-900 mb-2">AI Document Generation</h3>
             <p className="text-xs text-slate-500 leading-relaxed">Generate OMs, CIMs, and USPAP-style BVRs. Professional output, not fill-in templates.</p>
+            <p className="text-xs text-blue-600 font-semibold mt-3">Learn More →</p>
+          </a>
+          <a href="/features/risk-analysis" className="p-4 rounded-xl border border-slate-200 hover:border-blue-500 hover:shadow-sm transition block">
+            <div className="text-2xl mb-2">⚠️</div>
+            <h3 className="text-base font-semibold text-slate-900 mb-2">Risk Analysis &amp; CSRP</h3>
+            <p className="text-xs text-slate-500 leading-relaxed">15-factor weighted risk scoring that produces defensible, USPAP-aligned discount and capitalization rates.</p>
             <p className="text-xs text-blue-600 font-semibold mt-3">Learn More →</p>
           </a>
         </div>

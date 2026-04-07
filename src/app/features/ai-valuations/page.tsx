@@ -145,7 +145,8 @@ export default function AIValuationsPage() {
         <div className="max-w-5xl mx-auto px-6">
           <h2 className="text-2xl font-bold text-slate-900 text-center mb-10">Inside Each Agent</h2>
           <div className="space-y-6">
-            {agents.map((agent) => (
+            {agents.flatMap((agent) => {
+              const card = (
               <div key={agent.id} className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
                 <div className="flex items-start gap-4 mb-4">
                   <div className={`${agent.color} text-white text-xs font-bold px-3 py-1.5 rounded-lg`}>{agent.label}</div>
@@ -177,7 +178,22 @@ export default function AIValuationsPage() {
                   </div>
                 </div>
               </div>
-            ))}
+              );
+              if (agent.label === 'Agent 2') {
+                return [
+                  card,
+                  <div key="risk-callout" className="bg-red-50 border-2 border-red-200 rounded-xl p-5 flex items-center gap-4">
+                    <div className="bg-red-600 text-white text-sm font-bold px-3 py-1.5 rounded-lg">Agent 2.5</div>
+                    <div className="flex-1">
+                      <h3 className="text-lg font-bold text-slate-900">Risk Analysis Agent</h3>
+                      <p className="text-sm text-slate-500 mt-1">Dedicated AI agent for 15-factor CSRP risk scoring, discount rate build-up, and risk narrative generation.</p>
+                    </div>
+                    <a href="/features/risk-analysis" className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-lg transition whitespace-nowrap">Deep Dive →</a>
+                  </div>,
+                ];
+              }
+              return [card];
+            })}
           </div>
         </div>
       </section>
