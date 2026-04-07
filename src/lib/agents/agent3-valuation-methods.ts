@@ -207,6 +207,58 @@ interface MethodResult {
   discount_rate: number | null
   csrp_score: CSRPScore | null
   reasoning: string
+  // Optional structured data returned only in the agent output (not persisted to DB).
+  // Used by the BVR report narrative to surface source data behind rule-of-thumb values.
+  rule_of_thumb_data?: IndustryMultipleMatch | null
+}
+
+interface IndustryMultipleMatch {
+  industry_name: string
+  industry_category: string | null
+  sde_multiple_low: number | null
+  sde_multiple_mid: number | null
+  sde_multiple_high: number | null
+  revenue_multiple_low: number | null
+  revenue_multiple_mid: number | null
+  revenue_multiple_high: number | null
+  sample_size: number | null
+  rule_of_thumb_formula: string | null
+  rule_of_thumb_source: string | null
+  match_type: 'naics_exact' | 'industry_fuzzy'
+}
+
+// Query industry_multiples lookup table. Prefers exact NAICS-code match against
+// the naics_codes array column; falls back to fuzzy ILIKE on industry_name.
+async function lookupIndustryMultiples(
+  supabase: ReturnType<typeof getServiceClient>,
+  naicsCode: string | null,
+  industry: string | null,
+): Promise<IndustryMultipleMatch | null> {
+  // 1. Exact NAICS match — industry_multiples.naics_codes is a text[] column
+  if (naicsCode && naicsCode.trim()) {
+    const { data: naicsMatch } = await supabase
+      .from('industry_multiples')
+      .select('industry_name, industry_category, sde_multiple_low, sde_multiple_mid, sde_multiple_high, revenue_multiple_low, revenue_multiple_mid, revenue_multiple_high, sample_size, rule_of_thumb_formula, rule_of_thumb_source')
+      .contains('naics_codes', [naicsCode.trim()])
+      .limit(1)
+      .maybeSingle()
+
+    if (naicsMatch) return { ...naicsMatch, match_type: 'naics_exact' }
+  }
+
+  // 2. Fuzzy industry_name match
+  if (industry && industry.trim()) {
+    const { data: fuzzyMatch } = await supabase
+      .from('industry_multiples')
+      .select('industry_name, industry_category, sde_multiple_low, sde_multiple_mid, sde_multiple_high, revenue_multiple_low, revenue_multiple_mid, revenue_multiple_high, sample_size, rule_of_thumb_formula, rule_of_thumb_source')
+      .ilike('industry_name', `%${industry.trim()}%`)
+      .limit(1)
+      .maybeSingle()
+
+    if (fuzzyMatch) return { ...fuzzyMatch, match_type: 'industry_fuzzy' }
+  }
+
+  return null
 }
 
 function runMarketMultiple(
@@ -385,9 +437,72 @@ function runRuleOfThumb(
   annualRevenue: number,
   normalizedEarnings: number,
   industry: string | null,
+  industryMatch: IndustryMultipleMatch | null,
 ): MethodResult {
-  // Industry-specific rules of thumb
-  let revenueMultiple = 0.35 // Default
+  // Preferred path: use curated industry_multiples row (matched by NAICS or fuzzy industry_name).
+  if (industryMatch) {
+    // Prefer SDE mid multiple when we have normalized earnings; fall back to revenue mid.
+    const sdeMid = industryMatch.sde_multiple_mid != null ? Number(industryMatch.sde_multiple_mid) : null
+    const revMid = industryMatch.revenue_multiple_mid != null ? Number(industryMatch.revenue_multiple_mid) : null
+
+    let value = 0
+    let multipleUsed: number | null = null
+    let basisLabel = ''
+
+    if (sdeMid && normalizedEarnings > 0) {
+      value = Math.round(normalizedEarnings * sdeMid)
+      multipleUsed = sdeMid
+      basisLabel = `${sdeMid.toFixed(2)}x normalized earnings ($${normalizedEarnings.toLocaleString()})`
+    } else if (revMid && annualRevenue > 0) {
+      value = Math.round(annualRevenue * revMid)
+      multipleUsed = revMid
+      basisLabel = `${revMid.toFixed(2)}x annual revenue ($${annualRevenue.toLocaleString()})`
+    }
+
+    const sdeRange = (sdeMid && industryMatch.sde_multiple_low != null && industryMatch.sde_multiple_high != null)
+      ? `SDE range ${Number(industryMatch.sde_multiple_low).toFixed(2)}x – ${Number(industryMatch.sde_multiple_high).toFixed(2)}x (mid ${sdeMid.toFixed(2)}x)`
+      : null
+    const revRange = (revMid && industryMatch.revenue_multiple_low != null && industryMatch.revenue_multiple_high != null)
+      ? `Revenue range ${Number(industryMatch.revenue_multiple_low).toFixed(2)}x – ${Number(industryMatch.revenue_multiple_high).toFixed(2)}x (mid ${revMid.toFixed(2)}x)`
+      : null
+
+    const provenance = industryMatch.match_type === 'naics_exact'
+      ? `matched on NAICS code to industry "${industryMatch.industry_name}"`
+      : `fuzzy-matched on industry name to "${industryMatch.industry_name}"`
+
+    const sampleNote = industryMatch.sample_size != null
+      ? ` based on a sample of ${industryMatch.sample_size} comparable transactions`
+      : ''
+
+    const formulaNote = industryMatch.rule_of_thumb_formula
+      ? ` Published rule of thumb: ${industryMatch.rule_of_thumb_formula}.`
+      : ''
+
+    const sourceNote = industryMatch.rule_of_thumb_source
+      ? ` Source: ${industryMatch.rule_of_thumb_source}.`
+      : ''
+
+    const reasoning = `Rule of Thumb ${provenance}${sampleNote}. Applied ${basisLabel} = $${value.toLocaleString()}. ` +
+      [sdeRange, revRange].filter(Boolean).join('; ') + '.' +
+      formulaNote + sourceNote +
+      ' Used as a reasonableness check against the primary income-based methods, weighted at 10%.'
+
+    return {
+      method: 'rule_of_thumb',
+      result_value: value,
+      weight: 0.10,
+      multiple_used: multipleUsed,
+      cap_rate: null,
+      discount_rate: null,
+      csrp_score: null,
+      reasoning,
+      rule_of_thumb_data: industryMatch,
+    }
+  }
+
+  // Fallback: hardcoded keyword heuristics (preserved for backward compatibility
+  // when no row exists in industry_multiples and no NAICS is supplied).
+  let revenueMultiple = 0.35
   let description = 'general business'
 
   const key = (industry || '').toLowerCase()
@@ -413,12 +528,13 @@ function runRuleOfThumb(
   return {
     method: 'rule_of_thumb',
     result_value: value,
-    weight: 0.10, // Reasonableness check, not primary method
+    weight: 0.10,
     multiple_used: revenueMultiple,
     cap_rate: null,
     discount_rate: null,
     csrp_score: null,
-    reasoning: `Industry rule of thumb for ${description}: ${(revenueMultiple * 100).toFixed(0)}% of annual revenue ($${annualRevenue.toLocaleString()}) = $${value.toLocaleString()}. This method is used as a reasonableness check against the primary income-based methods, weighted at 10%.`,
+    reasoning: `Industry rule of thumb (fallback, no industry_multiples match) for ${description}: ${(revenueMultiple * 100).toFixed(0)}% of annual revenue ($${annualRevenue.toLocaleString()}) = $${value.toLocaleString()}. This method is used as a reasonableness check against the primary income-based methods, weighted at 10%.`,
+    rule_of_thumb_data: null,
   }
 }
 
@@ -449,12 +565,16 @@ export async function runAgent3(valuationId: string): Promise<Agent3Result> {
   const annualRevenue = Number(valuation.annual_revenue || 0)
   const metricType = valuation.metric_type as 'sde' | 'ebitda'
   const industry = valuation.industry as string | null
+  const naicsCode = (valuation.naics_code as string | null) ?? null
 
   // 2. Query Open Brain for comparable context
   const openBrainContext = await queryOpenBrainForComparables(industry, annualRevenue)
 
-  // 3. Get industry benchmarks
+  // 3. Get industry benchmarks (hardcoded ranges, used by Market Multiple + DCF build-up)
   const benchmark = getBenchmark(industry)
+
+  // 3b. Look up curated industry_multiples row for Rule of Thumb (NAICS exact → fuzzy fallback)
+  const industryMatch = await lookupIndustryMultiples(supabase, naicsCode, industry)
 
   // 4. Check for broker-entered risk factors
   const { data: riskRow } = await supabase
@@ -499,7 +619,7 @@ export async function runAgent3(valuationId: string): Promise<Agent3Result> {
     runCapOfEarningsWithRates(normalizedEarnings, capRate, csrp, industry, discountRate),
     runDCFWithRates(normalizedEarnings, discountRate, growthRate, csrp),
     runAssetBased(annualRevenue, industry),
-    runRuleOfThumb(annualRevenue, normalizedEarnings, industry),
+    runRuleOfThumb(annualRevenue, normalizedEarnings, industry, industryMatch),
   ]
 
   // 6. Calculate weighted value
