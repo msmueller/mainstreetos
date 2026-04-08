@@ -1,8 +1,19 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { createValuation } from '../actions'
+import { createClient } from '@/lib/supabase/client'
 import type { FinancialCategory } from '@/lib/types'
+
+// Shape returned by the search_industry() Supabase RPC
+interface IndustrySuggestion {
+  industry_description: string
+  business_category: string | null
+  naics_code: string | null
+  naics_title: string | null
+  sic_code: string | null
+  sic_title: string | null
+}
 
 // ═══════════════════════════════════════════════════════════════
 // P&L LINE ITEM STRUCTURE (mirrors Deal Workbook)
@@ -104,6 +115,54 @@ export default function NewValuationPage() {
   const [ownerCompInOpex, setOwnerCompInOpex] = useState(false)
   const [activeTab, setActiveTab] = useState<'financials' | 'risk'>('financials')
 
+  // Industry typeahead state (drives industry + auto-populates NAICS/SIC)
+  const [industry, setIndustry] = useState('')
+  const [naicsCode, setNaicsCode] = useState('')
+  const [sicCode, setSicCode] = useState('')
+  const [industrySuggestions, setIndustrySuggestions] = useState<IndustrySuggestion[]>([])
+  const [showIndustryDropdown, setShowIndustryDropdown] = useState(false)
+  const [industrySearching, setIndustrySearching] = useState(false)
+  const lastSelectedIndustryRef = useRef('')
+
+  // Debounced search_industry() RPC call — fires 200ms after the user stops typing,
+  // skips when the input matches the last selected value (to avoid a re-query loop
+  // immediately after a selection sets the input).
+  useEffect(() => {
+    const term = industry.trim()
+    if (term.length < 2 || term === lastSelectedIndustryRef.current) {
+      setIndustrySuggestions([])
+      setIndustrySearching(false)
+      return
+    }
+    let cancelled = false
+    setIndustrySearching(true)
+    const timer = setTimeout(async () => {
+      const supabase = createClient()
+      const { data, error } = await supabase.rpc('search_industry', { search_term: term })
+      if (cancelled) return
+      if (error) {
+        console.error('search_industry RPC error:', error)
+        setIndustrySuggestions([])
+      } else {
+        setIndustrySuggestions((data as IndustrySuggestion[]) ?? [])
+      }
+      setIndustrySearching(false)
+    }, 200)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [industry])
+
+  function selectIndustry(s: IndustrySuggestion) {
+    setIndustry(s.industry_description)
+    setNaicsCode(s.naics_code ?? '')
+    setSicCode(s.sic_code ?? '')
+    lastSelectedIndustryRef.current = s.industry_description
+    setShowIndustryDropdown(false)
+    setIndustrySuggestions([])
+  }
+
   // Risk factors state
   const [riskFactors, setRiskFactors] = useState<RiskFactor[]>(DEFAULT_RISK_FACTORS)
   const [riskFreeRate, setRiskFreeRate] = useState(0.045)
@@ -187,10 +246,58 @@ export default function NewValuationPage() {
             <div className="col-span-2">
               <input name="business_name" required placeholder="Business Name *" className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
             </div>
-            <input name="industry" placeholder="Industry" className="px-3 py-2 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+            <div className="relative">
+              <input
+                name="industry"
+                autoComplete="off"
+                value={industry}
+                onChange={e => {
+                  setIndustry(e.target.value)
+                  setShowIndustryDropdown(true)
+                }}
+                onFocus={() => { if (industrySuggestions.length > 0) setShowIndustryDropdown(true) }}
+                onBlur={() => { setTimeout(() => setShowIndustryDropdown(false), 150) }}
+                placeholder="Industry (search…)"
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+              {showIndustryDropdown && (industrySearching || industrySuggestions.length > 0) && (
+                <div className="absolute z-20 left-0 right-0 mt-1 max-h-72 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg">
+                  {industrySearching && industrySuggestions.length === 0 && (
+                    <div className="px-3 py-2 text-xs text-slate-400">Searching…</div>
+                  )}
+                  {industrySuggestions.map((s, i) => (
+                    <button
+                      key={`${s.naics_code ?? 'none'}-${i}`}
+                      type="button"
+                      onMouseDown={e => { e.preventDefault(); selectIndustry(s) }}
+                      className="w-full text-left px-3 py-2 hover:bg-blue-50 border-b border-slate-100 last:border-0"
+                    >
+                      <div className="text-sm text-slate-900">{s.industry_description}</div>
+                      <div className="text-xs text-slate-500 mt-0.5">
+                        {s.naics_code && <span>NAICS {s.naics_code}</span>}
+                        {s.naics_code && s.business_category && <span className="mx-1.5 text-slate-300">•</span>}
+                        {s.business_category && <span>{s.business_category}</span>}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <input name="location" placeholder="Location" className="px-3 py-2 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-            <input name="sic_code" placeholder="SIC Code" className="px-3 py-2 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-            <input name="naics_code" placeholder="NAICS Code" className="px-3 py-2 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+            <input
+              name="sic_code"
+              value={sicCode}
+              onChange={e => setSicCode(e.target.value)}
+              placeholder="SIC Code"
+              className="px-3 py-2 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+            <input
+              name="naics_code"
+              value={naicsCode}
+              onChange={e => setNaicsCode(e.target.value)}
+              placeholder="NAICS Code"
+              className="px-3 py-2 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            />
             <input name="annual_revenue" type="number" step="0.01" placeholder="Annual Revenue ($)" className="px-3 py-2 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
             <div className="flex items-center gap-2">
               <select name="weighting_method" value={weightingMethod} onChange={e => setWeightingMethod(e.target.value)}
