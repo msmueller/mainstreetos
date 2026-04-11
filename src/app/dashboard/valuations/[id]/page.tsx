@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
-import type { Valuation, FinancialData, ValuationMethod } from '@/lib/types'
+import type { Valuation, FinancialData, ValuationMethod, SubscriptionTier } from '@/lib/types'
 import RunAgentsButton from './run-agents-button'
 import GenerateReportButton from './generate-report-button'
 
@@ -38,6 +38,13 @@ export default async function ValuationDetailPage({
 
   const finData = (financials || []) as FinancialData[]
   const methodData = (methods || []) as ValuationMethod[]
+
+  const { data: profile } = await supabase
+    .from('users')
+    .select('subscription_tier')
+    .eq('id', user!.id)
+    .single()
+  const tier = ((profile?.subscription_tier as SubscriptionTier) || 'free')
 
   return (
     <div>
@@ -117,7 +124,7 @@ export default async function ValuationDetailPage({
           </div>
 
           <RunAgentsButton valuationId={v.id} status={v.status} />
-          <GenerateReportButton valuationId={v.id} status={v.status} reportUrl={v.report_url} />
+          <GenerateReportButton valuationId={v.id} status={v.status} reportUrl={v.report_url} tier={tier} />
         </div>
       )}
 
