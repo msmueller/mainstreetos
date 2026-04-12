@@ -41,10 +41,17 @@ export default async function DashboardLayout({
 
           <div className="pt-4 pb-2">
             <p className="px-3 text-xs font-medium text-slate-400 uppercase tracking-wider">
+              Deals
+            </p>
+          </div>
+          <NavItem href="/dashboard/deals" label="Deal Pipeline" icon="🔄" />
+          <NavItem href="/dashboard/leads" label="Leads & Contacts" icon="👥" />
+
+          <div className="pt-4 pb-2">
+            <p className="px-3 text-xs font-medium text-slate-400 uppercase tracking-wider">
               Coming Soon
             </p>
           </div>
-          <NavItem href="#" label="Deal Pipeline" icon="🔄" disabled />
           <NavItem href="#" label="Documents" icon="📄" disabled />
           <NavItem href="#" label="Knowledge Base" icon="🧠" disabled />
         </nav>
