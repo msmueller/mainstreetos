@@ -2,15 +2,16 @@ import { createClient } from '@/lib/supabase/server'
 import type { Contact } from '@/lib/types'
 import LeadsTable from './leads-table'
 
+export const dynamic = 'force-dynamic'
+
 export default async function LeadsPage() {
   const supabase = await createClient()
   const { data: { user: authUser } } = await supabase.auth.getUser()
 
-  // Fetch all contacts for this broker
+  // Fetch all contacts (RLS handles access control)
   const { data: contacts } = await supabase
     .from('contacts')
     .select('*')
-    .eq('broker_id', authUser!.id)
     .order('created_at', { ascending: false })
 
   const allContacts = (contacts || []) as Contact[]

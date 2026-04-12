@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import type { Valuation, User } from '@/lib/types'
 
+export const dynamic = 'force-dynamic'
+
 export default async function DashboardPage() {
   const supabase = await createClient()
   const { data: { user: authUser } } = await supabase.auth.getUser()

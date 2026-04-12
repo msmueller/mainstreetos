@@ -2,15 +2,16 @@ import { createClient } from '@/lib/supabase/server'
 import type { Deal, DealWithCounts } from '@/lib/types'
 import PipelineView from './pipeline-view'
 
+export const dynamic = 'force-dynamic'
+
 export default async function DealsPage() {
   const supabase = await createClient()
   const { data: { user: authUser } } = await supabase.auth.getUser()
 
-  // Fetch all deals for this broker
+  // Fetch all deals (RLS handles access control)
   const { data: deals } = await supabase
     .from('deals')
     .select('*')
-    .eq('broker_id', authUser!.id)
     .order('created_at', { ascending: false })
 
   const allDeals = (deals || []) as Deal[]
