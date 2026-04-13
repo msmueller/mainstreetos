@@ -16,6 +16,7 @@ interface LeadRow {
   created_at: string
   deal_count: number
   nda_count: number
+  deal_names: string[]
 }
 
 const fmt = (v: number | null) => {
@@ -115,9 +116,9 @@ export default function LeadsTable({ leads }: { leads: LeadRow[] }) {
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 bg-slate-50">Email</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 bg-slate-50">Phone</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 bg-slate-50">Company</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 bg-slate-50">Deal Name</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 bg-slate-50">Source</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 bg-slate-50">Liquid Cash</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 bg-slate-50">Deals</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 bg-slate-50">NDAs</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 bg-slate-50">POF</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 bg-slate-50">Status</th>
@@ -140,6 +141,19 @@ export default function LeadsTable({ leads }: { leads: LeadRow[] }) {
                     <td className="px-4 py-3 text-sm text-slate-600">{l.email || '—'}</td>
                     <td className="px-4 py-3 text-sm text-slate-600 whitespace-nowrap">{l.phone || '—'}</td>
                     <td className="px-4 py-3 text-sm text-slate-600">{l.company_name || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-slate-700 max-w-56">
+                      {l.deal_names.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {l.deal_names.map((name, i) => (
+                            <span key={i} className="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              {name}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       {l.source ? (
                         <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700">
@@ -148,11 +162,6 @@ export default function LeadsTable({ leads }: { leads: LeadRow[] }) {
                       ) : '—'}
                     </td>
                     <td className="px-4 py-3 text-sm font-medium text-slate-900">{fmt(l.liquid_cash)}</td>
-                    <td className="px-4 py-3">
-                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
-                        {l.deal_count}
-                      </span>
-                    </td>
                     <td className="px-4 py-3">
                       <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                         {l.nda_count}

@@ -16,22 +16,27 @@ export default async function LeadsPage() {
 
   const allContacts = (contacts || []) as Contact[]
 
-  // Fetch deal_access to compute deal counts and NDA counts per contact
+  // Fetch deal_access joined with deal names
   const contactIds = allContacts.map(c => c.id)
-  let accessRows: { contact_id: string; nda_signed: boolean }[] = []
+  let accessRows: { contact_id: string; nda_signed: boolean; deal_id: string; deals: { listing_name: string } | null }[] = []
 
   if (contactIds.length > 0) {
     const { data } = await supabase
       .from('deal_access')
-      .select('contact_id, nda_signed')
+      .select('contact_id, nda_signed, deal_id, deals(listing_name)')
       .in('contact_id', contactIds)
 
     accessRows = (data || []) as typeof accessRows
   }
 
-  // Build lead rows
+  // Build lead rows with deal names
   const leads = allContacts.map(c => {
     const access = accessRows.filter(a => a.contact_id === c.id)
+    const dealNames = access
+      .map(a => a.deals?.listing_name)
+      .filter((name): name is string => !!name)
+    // Deduplicate
+    const uniqueDealNames = [...new Set(dealNames)]
     return {
       id: c.id,
       first_name: c.first_name,
@@ -46,6 +51,7 @@ export default async function LeadsPage() {
       created_at: c.created_at,
       deal_count: access.length,
       nda_count: access.filter(a => a.nda_signed).length,
+      deal_names: uniqueDealNames,
     }
   })
 
