@@ -10,3 +10,16 @@ node_modules/
 docs/references/*.pdf
 docs/references/*.md
 !docs/references/README.md
+
+# Business documents (not tracked in git)
+*.pdf
+*.docx
+*.xlsx
+*.mp4
+*.csv
+Logos and Artwork/
+Marketing/
+OS Development/
+Trademark Application/
+Y-Combinator/
+contacts-decide-fields.html
