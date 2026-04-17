@@ -248,6 +248,43 @@ export interface DealWithCounts extends Deal {
   nda_signed_count: number
 }
 
+// ─── Communications / Activity Log ──────────────────────────────────────────
+
+export type CommunicationType = 'email' | 'phone' | 'note' | 'text'
+export type CommunicationDirection = 'inbound' | 'outbound'
+export type CommunicationSource = 'manual' | 'gmail_sync' | 'bbs_scrape'
+
+export interface Communication {
+  id: string
+  broker_id: string
+  contact_id: string
+  deal_id: string | null
+  comm_type: CommunicationType
+  direction: CommunicationDirection | null
+  subject: string | null
+  body: string | null
+  summary: string | null
+  gmail_message_id: string | null
+  gmail_thread_id: string | null
+  from_address: string | null
+  to_addresses: string[] | null
+  cc_addresses: string[] | null
+  phone_number: string | null
+  duration_minutes: number | null
+  occurred_at: string
+  logged_by: CommunicationSource
+  is_pinned: boolean
+  created_at: string
+  updated_at: string
+}
+
+export const COMM_TYPE_LABELS: Record<CommunicationType, string> = {
+  email: 'Email',
+  phone: 'Phone Call',
+  note: 'Note',
+  text: 'Text/SMS',
+}
+
 // ─── Subscription & Licensing ────────────────────────────────────────────────
 
 // Map subscription tier → model router broker license

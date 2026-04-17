@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import type { Contact } from '@/lib/types'
+import type { Contact, Communication } from '@/lib/types'
 import LeadsTable from './leads-table'
 
 export const dynamic = 'force-dynamic'
@@ -55,6 +55,18 @@ export default async function LeadsPage() {
     }
   })
 
+  // Fetch all communications for these contacts
+  let allComms: Communication[] = []
+  if (contactIds.length > 0) {
+    const { data: commsData } = await supabase
+      .from('communications')
+      .select('*')
+      .in('contact_id', contactIds)
+      .order('occurred_at', { ascending: false })
+
+    allComms = (commsData || []) as Communication[]
+  }
+
   return (
     <div>
       <div className="mb-6">
@@ -62,7 +74,7 @@ export default async function LeadsPage() {
         <p className="text-slate-500 mt-1">Track buyer leads, prospects, and contacts across all your deals.</p>
       </div>
 
-      <LeadsTable leads={leads} />
+      <LeadsTable leads={leads} communications={allComms} />
     </div>
   )
 }
