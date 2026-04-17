@@ -18,7 +18,7 @@ export default async function LeadsPage() {
 
   // Fetch deal_access joined with deal names
   const contactIds = allContacts.map(c => c.id)
-  let accessRows: { contact_id: string; nda_signed: boolean; deal_id: string; deals: { listing_name: string } | null }[] = []
+  let accessRows: { contact_id: string; nda_signed: boolean; deal_id: string; deals: { listing_name: string }[] }[] = []
 
   if (contactIds.length > 0) {
     const { data } = await supabase
@@ -33,7 +33,7 @@ export default async function LeadsPage() {
   const leads = allContacts.map(c => {
     const access = accessRows.filter(a => a.contact_id === c.id)
     const dealNames = access
-      .map(a => a.deals?.listing_name)
+      .flatMap(a => a.deals.map(d => d.listing_name))
       .filter((name): name is string => !!name)
     // Deduplicate
     const uniqueDealNames = [...new Set(dealNames)]
