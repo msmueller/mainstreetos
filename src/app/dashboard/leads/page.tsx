@@ -19,7 +19,8 @@ export default async function LeadsPage() {
 
   // Fetch deal_access joined with deal names
   const contactIds = allContacts.map(c => c.id)
-  let accessRows: { contact_id: string; nda_signed: boolean; deal_id: string; deals: { listing_name: string } | null }[] = []
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let accessRows: any[] = []
 
   if (contactIds.length > 0) {
     const { data } = await supabase
@@ -27,15 +28,20 @@ export default async function LeadsPage() {
       .select('contact_id, nda_signed, deal_id, deals(listing_name)')
       .in('contact_id', contactIds)
 
-    accessRows = (data || []) as typeof accessRows
+    accessRows = (data || [])
   }
 
   // Build lead rows with deal names
   const leads = allContacts.map(c => {
-    const access = accessRows.filter(a => a.contact_id === c.id)
+    const access = accessRows.filter((a: any) => a.contact_id === c.id)
     const dealNames = access
-      .map(a => a.deals?.listing_name)
-      .filter((name): name is string => !!name)
+      .map((a: any) => {
+        const d = a.deals
+        if (!d) return null
+        if (Array.isArray(d)) return d[0]?.listing_name
+        return d.listing_name
+      })
+      .filter((name: any): name is string => !!name)
     // Deduplicate
     const uniqueDealNames = [...new Set(dealNames)]
     return {
