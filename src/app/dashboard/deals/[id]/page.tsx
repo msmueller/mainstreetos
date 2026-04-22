@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import PortalAccessPanel from '@/components/panels/PortalAccessPanel'
+import DraftReviewDrawer from '@/components/panels/DraftReviewDrawer'
 
 // ============================================================
 // BROKER DEAL DASHBOARD
@@ -165,9 +167,24 @@ export default function BrokerDealDashboard() {
   const [activeTab, setActiveTab] = useState<'pipeline' | 'documents' | 'activity'>('pipeline')
   const [showAdvanceModal, setShowAdvanceModal] = useState<{ buyer: Buyer; nextStage: string } | null>(null)
   const [showUploadModal, setShowUploadModal] = useState(false)
+  const [showDraftDrawer, setShowDraftDrawer] = useState(false)
+  const [pendingDraftCount, setPendingDraftCount] = useState(0)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [uploadForm, setUploadForm] = useState({ name: '', type: 'other', min_stage: 'inquiry', tier: 'L1' })
+
+  // Phase 12.13 — OM draft state
+  type OmDraftHistoryItem = {
+    id: string
+    created_at: string
+    status: string
+    notion_page_url: string | null
+    model_used: string | null
+  }
+  const [generatingOm, setGeneratingOm] = useState(false)
+  const [omError, setOmError] = useState<string | null>(null)
+  const [omDrafts, setOmDrafts] = useState<OmDraftHistoryItem[]>([])
+  const [showOmHistory, setShowOmHistory] = useState(false)
 
   const loadAll = useCallback(async () => {
     if (!id) return
@@ -261,6 +278,61 @@ export default function BrokerDealDashboard() {
 
   useEffect(() => { loadAll() }, [loadAll])
 
+  // Poll pending draft count for this deal (broker badge on "Review Drafts" button)
+  useEffect(() => {
+    if (!id) return
+    let cancelled = false
+    async function loadDraftCount() {
+      const { count } = await supabase
+        .from('ai_drafts')
+        .select('id', { count: 'exact', head: true })
+        .eq('deal_id', id)
+        .in('status', ['pending_review', 'draft'])
+      if (!cancelled && typeof count === 'number') setPendingDraftCount(count)
+    }
+    loadDraftCount()
+    const interval = setInterval(loadDraftCount, 60_000)
+    return () => { cancelled = true; clearInterval(interval) }
+  }, [id, supabase])
+
+  // Phase 12.13 — Load OM draft history for this listing
+  const loadOmDrafts = useCallback(async () => {
+    if (!id) return
+    const { data } = await supabase
+      .from('ai_drafts')
+      .select('id, created_at, status, notion_page_url, model_used')
+      .eq('object_type', 'seller_listing')
+      .eq('record_id', id)
+      .eq('kind', 'writer.om_draft')
+      .order('created_at', { ascending: false })
+      .limit(10)
+    if (Array.isArray(data)) {
+      setOmDrafts(data as OmDraftHistoryItem[])
+    }
+  }, [id, supabase])
+
+  useEffect(() => { loadOmDrafts() }, [loadOmDrafts])
+
+  async function handleGenerateOmDraft() {
+    if (!id || generatingOm) return
+    setGeneratingOm(true)
+    setOmError(null)
+    try {
+      const res = await fetch(`/api/deals/${id}/generate-om-draft`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
+      await loadOmDrafts()
+      setShowOmHistory(true)
+    } catch (err) {
+      setOmError(err instanceof Error ? err.message : 'OM draft generation failed')
+    } finally {
+      setGeneratingOm(false)
+    }
+  }
+
   async function handleAdvanceStage(buyer: Buyer, newStage: string) {
     try {
       const { error } = await supabase.rpc('advance_buyer_stage', {
@@ -342,8 +414,105 @@ export default function BrokerDealDashboard() {
             <div className="text-right">
               <p className="text-2xl font-bold text-gray-900">{fmt(deal.asking_price)}</p>
               <p className="text-sm text-gray-500">Rev {fmt(deal.annual_revenue)} • SDE {fmt(deal.sde)}</p>
+              <div className="mt-3 flex items-center justify-end gap-2">
+                <button
+                  onClick={handleGenerateOmDraft}
+                  disabled={generatingOm || usingDemo}
+                  title={usingDemo ? 'Connect live deal data to generate OM drafts.' : 'Generate a pre-NDA Offering Memorandum draft to Notion.'}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+                >
+                  {generatingOm ? (
+                    <>
+                      <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Generating…
+                    </>
+                  ) : (
+                    <>Generate OM Draft</>
+                  )}
+                </button>
+                <button
+                  onClick={() => setShowOmHistory((v) => !v)}
+                  className="relative inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg transition-colors"
+                >
+                  OM History
+                  {omDrafts.length > 0 && (
+                    <span className="inline-flex items-center justify-center min-w-[18px] h-4 px-1 text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-300 rounded-full">
+                      {omDrafts.length}
+                    </span>
+                  )}
+                </button>
+                <button
+                  onClick={() => setShowDraftDrawer(true)}
+                  className="relative inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-slate-900 hover:bg-slate-800 text-white rounded-lg transition-colors"
+                >
+                  Review AI Drafts
+                  {pendingDraftCount > 0 && (
+                    <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-bold bg-amber-400 text-slate-900 rounded-full">
+                      {pendingDraftCount}
+                    </span>
+                  )}
+                </button>
+              </div>
+              {omError && (
+                <p className="mt-2 text-xs text-red-600 max-w-xs ml-auto">
+                  {omError}
+                </p>
+              )}
             </div>
           </div>
+
+          {showOmHistory && (
+            <div className="mt-4 border border-slate-200 rounded-lg bg-slate-50">
+              <div className="flex items-center justify-between px-4 py-2 border-b border-slate-200">
+                <h3 className="text-xs font-semibold text-slate-700">
+                  OM Draft History
+                </h3>
+                <button
+                  onClick={() => setShowOmHistory(false)}
+                  className="text-xs text-slate-500 hover:text-slate-700"
+                >
+                  Close
+                </button>
+              </div>
+              {omDrafts.length === 0 ? (
+                <p className="px-4 py-3 text-xs text-slate-500">
+                  No OM drafts yet. Click &quot;Generate OM Draft&quot; to create the first one.
+                </p>
+              ) : (
+                <ul className="divide-y divide-slate-200">
+                  {omDrafts.map((d) => (
+                    <li key={d.id} className="flex items-center justify-between px-4 py-2">
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-slate-800 truncate">
+                          {new Date(d.created_at).toLocaleString('en-US', {
+                            month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+                          })}
+                          <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full border border-slate-300 bg-white text-slate-600">
+                            {d.status.replace(/_/g, ' ')}
+                          </span>
+                        </p>
+                        <p className="text-[11px] text-slate-500 truncate">
+                          {d.model_used || '—'}
+                        </p>
+                      </div>
+                      {d.notion_page_url ? (
+                        <a
+                          href={d.notion_page_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs font-medium text-blue-600 hover:text-blue-800 underline underline-offset-2 shrink-0"
+                        >
+                          Open in Notion ↗
+                        </a>
+                      ) : (
+                        <span className="text-xs text-slate-400">No link</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
 
           <div className="flex gap-8 mt-5 pt-4 border-t border-gray-100">
             <div><span className="text-2xl font-bold text-blue-600">{buyers.length}</span><span className="text-sm text-gray-500 ml-1.5">Active Buyers</span></div>
@@ -364,6 +533,14 @@ export default function BrokerDealDashboard() {
             ))}
           </div>
         </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-6 pt-6">
+        {deal.id && !usingDemo && (
+          <div className="mb-5">
+            <PortalAccessPanel dealId={deal.id} />
+          </div>
+        )}
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-6">
@@ -582,6 +759,12 @@ export default function BrokerDealDashboard() {
           </div>
         </div>
       )}
+
+      <DraftReviewDrawer
+        dealId={deal.id}
+        open={showDraftDrawer}
+        onClose={() => setShowDraftDrawer(false)}
+      />
     </div>
   )
 }
