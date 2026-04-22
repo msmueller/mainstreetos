@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import type { Valuation } from '@/lib/types'
 
@@ -22,12 +23,12 @@ export default async function ValuationsPage() {
             {items.length} valuation{items.length !== 1 ? 's' : ''} total
           </p>
         </div>
-        <a
+        <Link
           href="/dashboard/valuations/new"
           className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition"
         >
           New Valuation
-        </a>
+        </Link>
       </div>
 
       {items.length === 0 ? (
@@ -37,12 +38,12 @@ export default async function ValuationsPage() {
           <p className="text-slate-500 text-sm mb-6 max-w-md mx-auto">
             Create your first AI-powered business valuation. Enter business details and financial data, and our CAIBVS&trade; agents will run a multi-method analysis.
           </p>
-          <a
+          <Link
             href="/dashboard/valuations/new"
             className="inline-flex px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition"
           >
             Create First Valuation
-          </a>
+          </Link>
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -60,9 +61,9 @@ export default async function ValuationsPage() {
               {items.map((v) => (
                 <tr key={v.id} className="hover:bg-slate-50 transition">
                   <td className="px-6 py-4">
-                    <a href={`/dashboard/valuations/${v.id}`} className="font-medium text-slate-900 hover:text-blue-600">
+                    <Link href={`/dashboard/valuations/${v.id}`} className="font-medium text-slate-900 hover:text-blue-600">
                       {v.business_name}
-                    </a>
+                    </Link>
                     {v.location && <p className="text-xs text-slate-400">{v.location}</p>}
                   </td>
                   <td className="px-6 py-4 text-sm text-slate-600">{v.industry || '—'}</td>

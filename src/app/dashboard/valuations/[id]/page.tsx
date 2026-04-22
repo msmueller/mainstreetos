@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import type { Valuation, FinancialData, ValuationMethod, SubscriptionTier } from '@/lib/types'
@@ -51,9 +52,9 @@ export default async function ValuationDetailPage({
       {/* Header */}
       <div className="flex items-start justify-between mb-8">
         <div>
-          <a href="/dashboard/valuations" className="text-sm text-slate-400 hover:text-slate-600 transition">
+          <Link href="/dashboard/valuations" className="text-sm text-slate-400 hover:text-slate-600 transition">
             &larr; All Valuations
-          </a>
+          </Link>
           <h2 className="text-2xl font-bold text-slate-900 mt-2">{v.business_name}</h2>
           <p className="text-slate-500 mt-1">
             {[v.industry, v.location].filter(Boolean).join(' \u00b7 ') || 'No details'}

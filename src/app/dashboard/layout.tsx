@@ -1,7 +1,10 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import { signout } from '@/app/auth/actions'
 import type { User } from '@/lib/types'
+import CommandPalette from '@/components/palette/CommandPalette'
+import PaletteTrigger from '@/components/palette/PaletteTrigger'
 
 export default async function DashboardLayout({
   children,
@@ -26,12 +29,17 @@ export default async function DashboardLayout({
       {/* Sidebar */}
       <aside className="w-64 bg-white border-r border-slate-200 flex flex-col">
         {/* Logo */}
-        <a href="/" className="block p-5 border-b border-slate-100 text-center hover:bg-slate-50 transition">
+        <Link href="/" className="block p-5 border-b border-slate-100 text-center hover:bg-slate-50 transition">
           <div>
             <span className="text-lg font-bold text-slate-900 tracking-tight">MainStreet</span><span className="text-lg font-bold text-blue-600 tracking-tight">OS</span><span className="text-xs text-slate-400 align-super ml-0.5">™</span>
           </div>
           <p className="text-sm font-semibold text-slate-500 tracking-wide mt-1">AI-Native Deal Operating System</p>
-        </a>
+        </Link>
+
+        {/* Command palette trigger */}
+        <div className="px-3 pt-3">
+          <PaletteTrigger />
+        </div>
 
         {/* Navigation */}
         <nav className="flex-1 p-3 space-y-1">
@@ -90,6 +98,9 @@ export default async function DashboardLayout({
           {children}
         </div>
       </main>
+
+      {/* Global ⌘K command palette (mounted once per dashboard) */}
+      <CommandPalette />
     </div>
   )
 }
@@ -105,17 +116,23 @@ function NavItem({
   icon: string
   disabled?: boolean
 }) {
+  const className = `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition ${
+    disabled
+      ? 'text-slate-300 cursor-not-allowed'
+      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+  }`
+  if (disabled) {
+    return (
+      <span className={className} aria-disabled="true">
+        <span className="text-base">{icon}</span>
+        <span>{label}</span>
+      </span>
+    )
+  }
   return (
-    <a
-      href={disabled ? undefined : href}
-      className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition ${
-        disabled
-          ? 'text-slate-300 cursor-not-allowed'
-          : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-      }`}
-    >
+    <Link href={href} className={className}>
       <span className="text-base">{icon}</span>
       <span>{label}</span>
-    </a>
+    </Link>
   )
 }

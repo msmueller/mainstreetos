@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import type { DealWithCounts, DealType, DealStatus, SellerStage } from '@/lib/types'
+import type { DealWithCounts, DealType, DealStatus } from '@/lib/types'
 import { SELLER_STAGES } from '@/lib/types'
 
 const formatCurrency = (value: number | null) => {

@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import type { Deal, DealWithCounts } from '@/lib/types'
-import PipelineView from './pipeline-view'
+import DealsViewSwitcher from './DealsViewSwitcher'
 
 export const dynamic = 'force-dynamic'
 
@@ -49,7 +49,7 @@ export default async function DealsPage() {
         </div>
       </div>
 
-      <PipelineView deals={dealsWithCounts} />
+      <DealsViewSwitcher deals={dealsWithCounts} />
     </div>
   )
 }

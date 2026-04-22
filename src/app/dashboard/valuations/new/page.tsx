@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { createValuation } from '../actions'
 import { createClient } from '@/lib/supabase/client'
@@ -127,16 +128,21 @@ export default function NewValuationPage() {
   // Debounced search_industry() RPC call — fires 200ms after the user stops typing,
   // skips when the input matches the last selected value (to avoid a re-query loop
   // immediately after a selection sets the input).
+  //
+  // All setState calls live inside the timeout callback (never synchronously in the
+  // effect body) to comply with react-hooks/set-state-in-effect.
   useEffect(() => {
     const term = industry.trim()
-    if (term.length < 2 || term === lastSelectedIndustryRef.current) {
-      setIndustrySuggestions([])
-      setIndustrySearching(false)
-      return
-    }
+    const shouldSearch = term.length >= 2 && term !== lastSelectedIndustryRef.current
     let cancelled = false
-    setIndustrySearching(true)
     const timer = setTimeout(async () => {
+      if (cancelled) return
+      if (!shouldSearch) {
+        setIndustrySuggestions([])
+        setIndustrySearching(false)
+        return
+      }
+      setIndustrySearching(true)
       const supabase = createClient()
       const { data, error } = await supabase.rpc('search_industry', { search_term: term })
       if (cancelled) return
@@ -147,7 +153,7 @@ export default function NewValuationPage() {
         setIndustrySuggestions((data as IndustrySuggestion[]) ?? [])
       }
       setIndustrySearching(false)
-    }, 200)
+    }, shouldSearch ? 200 : 0)
     return () => {
       cancelled = true
       clearTimeout(timer)
@@ -490,7 +496,7 @@ export default function NewValuationPage() {
 
         {/* Submit */}
         <div className="flex items-center justify-between">
-          <a href="/dashboard/valuations" className="px-4 py-2.5 text-sm text-slate-600">Cancel</a>
+          <Link href="/dashboard/valuations" className="px-4 py-2.5 text-sm text-slate-600">Cancel</Link>
           <button type="submit" className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition">
             Create Valuation
           </button>

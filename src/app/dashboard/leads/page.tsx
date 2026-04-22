@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import type { Contact, Communication } from '@/lib/types'
-import LeadsTable from './leads-table'
+import LeadsViewSwitcher from './LeadsViewSwitcher'
 import SyncBbsButton from './sync-bbs-button'
 
 export const dynamic = 'force-dynamic'
@@ -84,7 +84,7 @@ export default async function LeadsPage() {
         <SyncBbsButton />
       </div>
 
-      <LeadsTable leads={leads} communications={allComms} />
+      <LeadsViewSwitcher leads={leads} communications={allComms} />
     </div>
   )
 }
