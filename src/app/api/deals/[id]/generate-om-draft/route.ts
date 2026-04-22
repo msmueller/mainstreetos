@@ -153,7 +153,9 @@ export async function POST(
         model: draft.model,
         input_tokens: draft.promptTokens,
         output_tokens: draft.completionTokens,
-        total_tokens: draft.promptTokens + draft.completionTokens,
+        // total_tokens is a GENERATED ALWAYS column computed from
+        // (input_tokens + output_tokens). Do NOT insert a value — Postgres
+        // rejects any non-DEFAULT value and the row write fails.
         started_at: startedAt.toISOString(),
         completed_at: completedAt.toISOString(),
         duration_ms: durationMs,
