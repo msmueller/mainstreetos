@@ -526,7 +526,13 @@ export default function BrokerDealDashboard() {
                 <button
                   onClick={handleGenerateOmDraft}
                   disabled={generatingOm || usingDemo}
-                  title={usingDemo ? 'Connect live deal data to generate OM drafts.' : 'Generate a pre-NDA Offering Memorandum draft to Notion.'}
+                  title={
+                    usingDemo
+                      ? 'Connect live deal data to generate OM drafts.'
+                      : linkedValuationId
+                        ? 'Generate a pre-NDA OM — RICH mode (derives pre-NDA-safe revenue range, trend, margin band, and valuation range from the linked valuation).'
+                        : 'Generate a pre-NDA OM — LEAN mode (top-line listing fields only). Link a valuation above for RICH mode.'
+                  }
                   className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
                 >
                   {generatingOm ? (
@@ -535,7 +541,16 @@ export default function BrokerDealDashboard() {
                       Generating…
                     </>
                   ) : (
-                    <>Generate OM Draft</>
+                    <>
+                      Generate OM Draft
+                      <span
+                        className={`ml-1 px-1.5 py-0.5 text-[9px] font-bold rounded ${
+                          linkedValuationId ? 'bg-emerald-500 text-white' : 'bg-amber-400 text-slate-900'
+                        }`}
+                      >
+                        {linkedValuationId ? 'RICH' : 'LEAN'}
+                      </span>
+                    </>
                   )}
                 </button>
                 <button
@@ -623,8 +638,8 @@ export default function BrokerDealDashboard() {
                   </p>
                   <p className="text-[11px] text-slate-500 mt-1">
                     {linkedValuationId
-                      ? 'CIM will include multi-year P&L, add-backs, valuation methods, and narrative.'
-                      : 'No valuation linked — CIM will use top-line listing fields only. Link a valuation for RICH mode.'}
+                      ? 'CIM will include multi-year P&L, add-backs, valuation methods, and narrative. OM will include a pre-NDA-safe revenue range, trend, margin band, and valuation range.'
+                      : 'No valuation linked — OM and CIM will use top-line listing fields only. Link a valuation for RICH mode on both.'}
                   </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -655,7 +670,7 @@ export default function BrokerDealDashboard() {
               )}
               {!loadingValuations && availableValuations.length === 0 && (
                 <p className="mt-2 text-[11px] text-slate-500 italic">
-                  No completed or in-review valuations found under your account. Create one from the Valuations workspace to enable RICH-mode CIMs.
+                  No completed or in-review valuations found under your account. Create one from the Valuations workspace to enable RICH-mode OMs and CIMs.
                 </p>
               )}
             </div>
