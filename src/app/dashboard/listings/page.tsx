@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import ListingsListClient from './ListingsListClient'
+import TopBar from '@/components/layout/TopBar'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,14 +34,14 @@ export default async function ListingsPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-900">Seller Listings</h2>
-          <p className="text-slate-500 mt-1">
-            All business-for-sale listings across your pipeline. Filter, sort, bulk-select, and export.
-          </p>
-        </div>
-      </div>
+      <TopBar
+        breadcrumbs={[
+          { label: 'Records', href: '/dashboard' },
+          { label: 'Seller Listings' },
+        ]}
+        title="Seller Listings"
+        subtitle="All business-for-sale listings across your pipeline. Filter, sort, bulk-select, and export."
+      />
 
       <ListingsListClient rows={rows} />
     </div>

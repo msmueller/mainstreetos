@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import type { Valuation, User } from '@/lib/types'
+import TopBar from '@/components/layout/TopBar'
 
 export const dynamic = 'force-dynamic'
 
@@ -76,15 +77,16 @@ export default async function DashboardPage() {
 
   return (
     <div>
-      {/* Page header */}
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold text-slate-900">
-          Welcome back, {user.full_name.split(' ')[0]}
-        </h2>
-        <p className="text-slate-500 mt-1">
-          Here&apos;s an overview of your MainStreetOS<span style={{ fontSize: '0.7em', fontWeight: 400, verticalAlign: 'super' }}>™</span> activity.
-        </p>
-      </div>
+      <TopBar
+        breadcrumbs={[{ label: 'Dashboard' }]}
+        title={`Welcome back, ${user.full_name.split(' ')[0]}`}
+        subtitle="Here's an overview of your MainStreetOS™ activity."
+        primaryAction={{
+          label: '+ New Valuation',
+          href: '/dashboard/valuations/new',
+          variant: 'primary',
+        }}
+      />
 
       {/* Broker overview — visible when user has any broker-scope data */}
       {brokerCtx.hasAnyBrokerData && (

@@ -1,9 +1,10 @@
-import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import type { Valuation, FinancialData, ValuationMethod, SubscriptionTier } from '@/lib/types'
 import RunAgentsButton from './run-agents-button'
 import GenerateReportButton from './generate-report-button'
+import TopBar from '@/components/layout/TopBar'
+import RecordActionsMenu, { type RecordAction } from '@/components/layout/RecordActionsMenu'
 
 export default async function ValuationDetailPage({
   params,
@@ -47,22 +48,31 @@ export default async function ValuationDetailPage({
     .single()
   const tier = ((profile?.subscription_tier as SubscriptionTier) || 'free')
 
+  const subtitleParts = [v.industry, v.location].filter(Boolean).join(' \u00b7 ') || 'No details'
+  const fullSubtitle = v.sic_code ? `${subtitleParts} \u00b7 SIC ${v.sic_code}` : subtitleParts
+
+  const actionItems: RecordAction[] = [
+    ...(v.report_url && !v.report_url.startsWith('local://')
+      ? [{ kind: 'link' as const, label: 'Download DOCX Report', href: v.report_url, external: true }]
+      : []),
+    { kind: 'link', label: 'All Valuations', href: '/dashboard/valuations' },
+    { kind: 'divider' },
+    { kind: 'link', label: 'New Valuation', href: '/dashboard/valuations/new' },
+  ]
+
   return (
     <div>
-      {/* Header */}
-      <div className="flex items-start justify-between mb-8">
-        <div>
-          <Link href="/dashboard/valuations" className="text-sm text-slate-400 hover:text-slate-600 transition">
-            &larr; All Valuations
-          </Link>
-          <h2 className="text-2xl font-bold text-slate-900 mt-2">{v.business_name}</h2>
-          <p className="text-slate-500 mt-1">
-            {[v.industry, v.location].filter(Boolean).join(' \u00b7 ') || 'No details'}
-            {v.sic_code && ` \u00b7 SIC ${v.sic_code}`}
-          </p>
-        </div>
-        <StatusBadge status={v.status} />
-      </div>
+      <TopBar
+        breadcrumbs={[
+          { label: 'Records', href: '/dashboard' },
+          { label: 'Valuations', href: '/dashboard/valuations' },
+          { label: v.business_name },
+        ]}
+        title={v.business_name}
+        subtitle={fullSubtitle}
+        titleAdornment={<StatusBadge status={v.status} />}
+        rightSlot={<RecordActionsMenu items={actionItems} />}
+      />
 
       {/* Valuation Result (if complete) */}
       {v.valuation_mid && (

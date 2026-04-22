@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import type { Valuation } from '@/lib/types'
+import TopBar from '@/components/layout/TopBar'
 
 export default async function ValuationsPage() {
   const supabase = await createClient()
@@ -16,20 +17,19 @@ export default async function ValuationsPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-900">Valuations</h2>
-          <p className="text-slate-500 mt-1">
-            {items.length} valuation{items.length !== 1 ? 's' : ''} total
-          </p>
-        </div>
-        <Link
-          href="/dashboard/valuations/new"
-          className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition"
-        >
-          New Valuation
-        </Link>
-      </div>
+      <TopBar
+        breadcrumbs={[
+          { label: 'Records', href: '/dashboard' },
+          { label: 'Valuations' },
+        ]}
+        title="Valuations"
+        subtitle={`${items.length} valuation${items.length !== 1 ? 's' : ''} total`}
+        primaryAction={{
+          label: '+ New Valuation',
+          href: '/dashboard/valuations/new',
+          variant: 'primary',
+        }}
+      />
 
       {items.length === 0 ? (
         <div className="bg-white rounded-xl border border-slate-200 px-6 py-16 text-center">

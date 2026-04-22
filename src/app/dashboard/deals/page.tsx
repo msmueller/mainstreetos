@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import type { Deal, DealWithCounts } from '@/lib/types'
 import DealsViewSwitcher from './DealsViewSwitcher'
+import TopBar from '@/components/layout/TopBar'
 
 export const dynamic = 'force-dynamic'
 
@@ -42,12 +43,14 @@ export default async function DealsPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-900">Deal Pipeline</h2>
-          <p className="text-slate-500 mt-1">Manage your active deals, listings, and buyer searches.</p>
-        </div>
-      </div>
+      <TopBar
+        breadcrumbs={[
+          { label: 'Records', href: '/dashboard' },
+          { label: 'Deals' },
+        ]}
+        title="Deal Pipeline"
+        subtitle="Manage your active deals, listings, and buyer searches."
+      />
 
       <DealsViewSwitcher deals={dealsWithCounts} />
     </div>

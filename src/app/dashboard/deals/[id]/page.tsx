@@ -1,10 +1,12 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import PortalAccessPanel from '@/components/panels/PortalAccessPanel'
 import DraftReviewDrawer from '@/components/panels/DraftReviewDrawer'
+import RecordActionsMenu, { type RecordAction } from '@/components/layout/RecordActionsMenu'
 
 // ============================================================
 // BROKER DEAL DASHBOARD
@@ -509,6 +511,18 @@ export default function BrokerDealDashboard() {
 
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-6 py-5">
+          {/* Phase 13.2: Attio-style breadcrumb trail above the record title */}
+          <nav className="mb-2 text-xs text-slate-500 flex items-center gap-1 flex-wrap">
+            <Link href="/dashboard" className="hover:text-slate-900 hover:underline transition">
+              Records
+            </Link>
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 text-slate-300"><path d="M7 5l5 5-5 5" /></svg>
+            <Link href="/dashboard/deals" className="hover:text-slate-900 hover:underline transition">
+              Deals
+            </Link>
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 text-slate-300"><path d="M7 5l5 5-5 5" /></svg>
+            <span className="text-slate-700 font-medium truncate">{deal.listing_name}</span>
+          </nav>
           <div className="flex items-start justify-between">
             <div>
               <div className="flex items-center gap-3">
@@ -605,6 +619,10 @@ export default function BrokerDealDashboard() {
                     </span>
                   )}
                 </button>
+                {/* Phase 13.2: Attio-style ⋯ overflow menu */}
+                <RecordActionsMenu
+                  items={buildDealActions(deal, linkedValuationId)}
+                />
               </div>
               {omError && (
                 <p className="mt-2 text-xs text-red-600 max-w-xs ml-auto">
@@ -992,4 +1010,31 @@ export default function BrokerDealDashboard() {
       />
     </div>
   )
+}
+
+// ------------------------------------------------------------
+// Phase 13.2 — RecordActionsMenu item builder
+// ------------------------------------------------------------
+// Returns the items for the Attio-style ⋯ overflow menu in the
+// deal detail header. Kept outside the component so it doesn't
+// re-allocate every render.
+// ------------------------------------------------------------
+function buildDealActions(deal: Deal, linkedValuationId: string | null): RecordAction[] {
+  const copyLink = () => {
+    if (typeof window !== 'undefined' && navigator?.clipboard) {
+      const url = `${window.location.origin}/dashboard/deals/${deal.id}`
+      navigator.clipboard.writeText(url).catch(() => {})
+    }
+  }
+  return [
+    { kind: 'button', label: 'Copy deal link', onClick: copyLink },
+    ...(linkedValuationId
+      ? [{ kind: 'link' as const, label: 'Open linked valuation', href: `/dashboard/valuations/${linkedValuationId}` }]
+      : []),
+    { kind: 'divider' },
+    { kind: 'link', label: 'All Deals', href: '/dashboard/deals' },
+    { kind: 'link', label: 'New Valuation', href: '/dashboard/valuations/new' },
+    { kind: 'divider' },
+    { kind: 'button', label: 'Archive deal (coming soon)', onClick: () => {}, disabled: true, variant: 'danger' },
+  ]
 }
