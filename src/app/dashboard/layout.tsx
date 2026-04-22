@@ -1,10 +1,20 @@
+// ============================================================
+// MainStreetOS — Dashboard layout (Phase 13.1)
+// ------------------------------------------------------------
+// Shell: Basepoint-style Sidebar (client) + content region.
+// Sidebar is a client component so it can read the active
+// pathname; user data and a server-fetched Recents list are
+// passed in as props so the broker can jump back to any
+// record they've been working on without copy/pasting URLs.
+// ============================================================
+
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { signout } from '@/app/auth/actions'
 import type { User } from '@/lib/types'
 import CommandPalette from '@/components/palette/CommandPalette'
-import PaletteTrigger from '@/components/palette/PaletteTrigger'
+import Sidebar, { type RecentItem } from '@/components/layout/Sidebar'
+
+export const dynamic = 'force-dynamic'
 
 export default async function DashboardLayout({
   children,
@@ -24,73 +34,67 @@ export default async function DashboardLayout({
 
   const user = profile as User | null
 
+  // Recents — 5 most recently updated seller_listings + 5 valuations the
+  // broker can read (RLS enforced). Merged by updated_at, top 5 overall.
+  const [dealsRes, valuationsRes] = await Promise.all([
+    supabase
+      .from('seller_listings')
+      .select('id, name, industry, updated_at')
+      .order('updated_at', { ascending: false })
+      .limit(5),
+    supabase
+      .from('valuations')
+      .select('id, business_name, updated_at')
+      .order('updated_at', { ascending: false })
+      .limit(5),
+  ])
+
+  type DealStub = { id: string; name: string | null; industry: string | null; updated_at: string }
+  type ValStub = { id: string; business_name: string | null; updated_at: string }
+
+  const dealRecents: (RecentItem & { _ts: number })[] = ((dealsRes.data || []) as DealStub[]).map(
+    (d) => ({
+      kind: 'deal',
+      id: d.id,
+      href: `/dashboard/deals/${d.id}`,
+      label: d.name || 'Untitled Listing',
+      sublabel: d.industry,
+      _ts: new Date(d.updated_at).getTime(),
+    }),
+  )
+
+  const valRecents: (RecentItem & { _ts: number })[] = ((valuationsRes.data || []) as ValStub[]).map(
+    (v) => ({
+      kind: 'valuation',
+      id: v.id,
+      href: `/dashboard/valuations/${v.id}`,
+      label: v.business_name || 'Untitled Valuation',
+      sublabel: null,
+      _ts: new Date(v.updated_at).getTime(),
+    }),
+  )
+
+  const recents: RecentItem[] = [...dealRecents, ...valRecents]
+    .sort((a, b) => b._ts - a._ts)
+    .slice(0, 5)
+    .map((r) => ({
+      kind: r.kind,
+      id: r.id,
+      href: r.href,
+      label: r.label,
+      sublabel: r.sublabel,
+    }))
+
   return (
     <div className="min-h-screen bg-slate-50 flex">
-      {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-slate-200 flex flex-col">
-        {/* Logo */}
-        <Link href="/" className="block p-5 border-b border-slate-100 text-center hover:bg-slate-50 transition">
-          <div>
-            <span className="text-lg font-bold text-slate-900 tracking-tight">MainStreet</span><span className="text-lg font-bold text-blue-600 tracking-tight">OS</span><span className="text-xs text-slate-400 align-super ml-0.5">™</span>
-          </div>
-          <p className="text-sm font-semibold text-slate-500 tracking-wide mt-1">AI-Native Deal Operating System</p>
-        </Link>
-
-        {/* Command palette trigger */}
-        <div className="px-3 pt-3">
-          <PaletteTrigger />
-        </div>
-
-        {/* Navigation */}
-        <nav className="flex-1 p-3 space-y-1">
-          <NavItem href="/dashboard" label="Dashboard" icon="📊" />
-          <NavItem href="/dashboard/valuations" label="Valuations" icon="📈" />
-          <NavItem href="/dashboard/valuations/new" label="New Valuation" icon="➕" />
-
-          <div className="pt-4 pb-2">
-            <p className="px-3 text-xs font-medium text-slate-400 uppercase tracking-wider">
-              Deals
-            </p>
-          </div>
-          <NavItem href="/dashboard/deals" label="Deal Pipeline" icon="🔄" />
-          <NavItem href="/dashboard/leads" label="Leads & Contacts" icon="👥" />
-
-          <div className="pt-4 pb-2">
-            <p className="px-3 text-xs font-medium text-slate-400 uppercase tracking-wider">
-              Coming Soon
-            </p>
-          </div>
-          <NavItem href="#" label="Documents" icon="📄" disabled />
-          <NavItem href="#" label="Knowledge Base" icon="🧠" disabled />
-        </nav>
-
-        {/* User section */}
-        <div className="p-4 border-t border-slate-100">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-              <span className="text-sm font-medium text-blue-600">
-                {user?.full_name?.charAt(0) || '?'}
-              </span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-slate-900 truncate">
-                {user?.full_name || authUser.email}
-              </p>
-              <p className="text-xs text-slate-400 capitalize">
-                {user?.subscription_tier || 'free'} plan
-              </p>
-            </div>
-          </div>
-          <form>
-            <button
-              formAction={signout}
-              className="w-full text-left px-3 py-1.5 text-sm text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-md transition"
-            >
-              Sign out
-            </button>
-          </form>
-        </div>
-      </aside>
+      <Sidebar
+        user={{
+          fullName: user?.full_name ?? null,
+          email: authUser.email ?? '',
+          tier: user?.subscription_tier ?? null,
+        }}
+        recents={recents}
+      />
 
       {/* Main content */}
       <main className="flex-1 overflow-auto">
@@ -102,37 +106,5 @@ export default async function DashboardLayout({
       {/* Global ⌘K command palette (mounted once per dashboard) */}
       <CommandPalette />
     </div>
-  )
-}
-
-function NavItem({
-  href,
-  label,
-  icon,
-  disabled = false,
-}: {
-  href: string
-  label: string
-  icon: string
-  disabled?: boolean
-}) {
-  const className = `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition ${
-    disabled
-      ? 'text-slate-300 cursor-not-allowed'
-      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-  }`
-  if (disabled) {
-    return (
-      <span className={className} aria-disabled="true">
-        <span className="text-base">{icon}</span>
-        <span>{label}</span>
-      </span>
-    )
-  }
-  return (
-    <Link href={href} className={className}>
-      <span className="text-base">{icon}</span>
-      <span>{label}</span>
-    </Link>
   )
 }
