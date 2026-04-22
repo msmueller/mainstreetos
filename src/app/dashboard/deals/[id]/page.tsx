@@ -189,6 +189,20 @@ export default function BrokerDealDashboard() {
   const [aiDrafts, setAiDrafts] = useState<AiDraftHistoryItem[]>([])
   const [showAiHistory, setShowAiHistory] = useState(false)
 
+  // Phase 12.14b — Linked valuation picker
+  type AvailableValuation = {
+    id: string
+    business_name: string | null
+    status: string
+    valuation_mid: number | null
+    updated_at: string | null
+  }
+  const [linkedValuationId, setLinkedValuationId] = useState<string | null>(null)
+  const [availableValuations, setAvailableValuations] = useState<AvailableValuation[]>([])
+  const [loadingValuations, setLoadingValuations] = useState(false)
+  const [savingValuationLink, setSavingValuationLink] = useState(false)
+  const [valuationLinkError, setValuationLinkError] = useState<string | null>(null)
+
   const loadAll = useCallback(async () => {
     if (!id) return
     setLoading(true)
@@ -204,7 +218,7 @@ export default function BrokerDealDashboard() {
       } else {
         const { data: listingRow, error: listingErr } = await supabase
           .from('seller_listings')
-          .select('id, name, industry, asking_price_usd, revenue_ttm_usd, sde_ttm_usd, stage, custom_fields')
+          .select('id, name, industry, asking_price_usd, revenue_ttm_usd, sde_ttm_usd, stage, custom_fields, valuation_id')
           .eq('id', id)
           .maybeSingle()
         if (!listingErr && listingRow) {
@@ -219,6 +233,7 @@ export default function BrokerDealDashboard() {
             seller_stage: (listingRow.stage as string) || null,
             deal_status: 'active',
           })
+          setLinkedValuationId((listingRow.valuation_id as string) ?? null)
           // Live listing — keep live=true so the OM draft button is enabled
         } else {
           live = false
@@ -340,6 +355,51 @@ export default function BrokerDealDashboard() {
   }, [id, supabase])
 
   useEffect(() => { loadAiDrafts() }, [loadAiDrafts])
+
+  // Phase 12.14b — Load broker's own valuations (RLS-scoped) for the picker.
+  // Only shows valuations in review / complete status — draft/processing
+  // wouldn't produce a usable CIM anyway.
+  const loadValuations = useCallback(async () => {
+    setLoadingValuations(true)
+    try {
+      const { data, error } = await supabase
+        .from('valuations')
+        .select('id, business_name, status, valuation_mid, updated_at')
+        .in('status', ['review', 'complete'])
+        .order('updated_at', { ascending: false })
+        .limit(50)
+      if (!error && Array.isArray(data)) {
+        setAvailableValuations(data as AvailableValuation[])
+      }
+    } catch (err) {
+      console.error('[deal-dashboard] loadValuations failed:', err)
+    } finally {
+      setLoadingValuations(false)
+    }
+  }, [supabase])
+
+  useEffect(() => { loadValuations() }, [loadValuations])
+
+  // Phase 12.14b — Link/unlink valuation to this listing. RLS on
+  // seller_listings restricts writes to the owning broker, so no
+  // explicit auth check is needed here.
+  async function handleLinkValuation(newValuationId: string | null) {
+    if (!id) return
+    setSavingValuationLink(true)
+    setValuationLinkError(null)
+    try {
+      const { error } = await supabase
+        .from('seller_listings')
+        .update({ valuation_id: newValuationId })
+        .eq('id', id)
+      if (error) throw new Error(error.message)
+      setLinkedValuationId(newValuationId)
+    } catch (err) {
+      setValuationLinkError(err instanceof Error ? err.message : 'Failed to update linked valuation')
+    } finally {
+      setSavingValuationLink(false)
+    }
+  }
 
   async function handleGenerateOmDraft() {
     if (!id || generatingOm) return
@@ -481,7 +541,13 @@ export default function BrokerDealDashboard() {
                 <button
                   onClick={handleGenerateCimDraft}
                   disabled={generatingCim || usingDemo}
-                  title={usingDemo ? 'Connect live deal data to generate CIM drafts.' : 'Generate a post-NDA Confidential Information Memorandum draft to Notion.'}
+                  title={
+                    usingDemo
+                      ? 'Connect live deal data to generate CIM drafts.'
+                      : linkedValuationId
+                        ? 'Generate a post-NDA CIM — RICH mode (full valuation + multi-year P&L + narrative).'
+                        : 'Generate a post-NDA CIM — LEAN mode (top-line listing fields only). Link a valuation above for RICH mode.'
+                  }
                   className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
                 >
                   {generatingCim ? (
@@ -490,7 +556,16 @@ export default function BrokerDealDashboard() {
                       Generating…
                     </>
                   ) : (
-                    <>Generate CIM Draft</>
+                    <>
+                      Generate CIM Draft
+                      <span
+                        className={`ml-1 px-1.5 py-0.5 text-[9px] font-bold rounded ${
+                          linkedValuationId ? 'bg-emerald-500 text-white' : 'bg-amber-400 text-slate-900'
+                        }`}
+                      >
+                        {linkedValuationId ? 'RICH' : 'LEAN'}
+                      </span>
+                    </>
                   )}
                 </button>
                 <button
@@ -528,6 +603,63 @@ export default function BrokerDealDashboard() {
               )}
             </div>
           </div>
+
+          {/* Phase 12.14b — Linked Valuation picker. Drives CIM rich/lean mode. */}
+          {!usingDemo && (
+            <div className="mt-4 border border-slate-200 rounded-lg bg-white px-4 py-3">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-slate-700">
+                    Linked Valuation
+                    <span
+                      className={`ml-2 inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                        linkedValuationId
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : 'bg-amber-50 text-amber-700 border-amber-200'
+                      }`}
+                    >
+                      {linkedValuationId ? 'RICH' : 'LEAN'}
+                    </span>
+                  </p>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    {linkedValuationId
+                      ? 'CIM will include multi-year P&L, add-backs, valuation methods, and narrative.'
+                      : 'No valuation linked — CIM will use top-line listing fields only. Link a valuation for RICH mode.'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <select
+                    value={linkedValuationId ?? ''}
+                    onChange={(e) => handleLinkValuation(e.target.value === '' ? null : e.target.value)}
+                    disabled={savingValuationLink || loadingValuations}
+                    className="px-3 py-1.5 text-xs border border-slate-300 rounded-lg bg-white text-slate-800 disabled:opacity-60 min-w-[260px]"
+                  >
+                    <option value="">— No valuation (LEAN) —</option>
+                    {availableValuations.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.business_name || 'Unnamed'}
+                        {v.valuation_mid ? ` • ${fmt(v.valuation_mid)}` : ''}
+                        {` • ${v.status}`}
+                      </option>
+                    ))}
+                  </select>
+                  {savingValuationLink && (
+                    <span className="inline-block w-3 h-3 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                  )}
+                </div>
+              </div>
+              {valuationLinkError && (
+                <p className="mt-2 text-xs text-red-600">
+                  {valuationLinkError}
+                </p>
+              )}
+              {!loadingValuations && availableValuations.length === 0 && (
+                <p className="mt-2 text-[11px] text-slate-500 italic">
+                  No completed or in-review valuations found under your account. Create one from the Valuations workspace to enable RICH-mode CIMs.
+                </p>
+              )}
+            </div>
+          )}
 
           {showAiHistory && (
             <div className="mt-4 border border-slate-200 rounded-lg bg-slate-50">

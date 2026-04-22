@@ -1,22 +1,20 @@
 // ============================================================
 // MainStreetOS — POST /api/deals/[id]/generate-cim-draft
 // ------------------------------------------------------------
-// Phase 12.14a — AI Draft pipeline (Confidential Information Memorandum, post-NDA)
-// Broker clicks "Generate CIM Draft" on a deal page. This route:
-//   1. Verifies auth + broker access to the seller_listing (RLS gate)
-//   2. Calls Claude Sonnet via agent-cim-draft to produce markdown
-//   3. Creates a child page under the "MSOS AI Drafts" Notion root
-//   4. Inserts an ai_agent_runs row (tracks spend/latency/model)
-//   5. Inserts an ai_drafts row in pending_review status
-//   6. Fire-and-forgets an Open Brain capture
-//   7. Returns { draft_id, notion_page_id, notion_page_url, model }
+// Phase 12.14a bootstrapped this route with top-line listing fields
+// only. Phase 12.14b upgrades the data path:
 //
-// Mirrors POST /api/deals/[id]/generate-om-draft (Phase 12.13).
-// The CIM differs only in:
-//   - agent api_name:  'agent_cim_writer'
-//   - ai_drafts.kind:  'writer.cim_draft'
-//   - Notion page title suffix: "Confidential Information Memorandum"
-//   - input listing shape: no `generic_title` (CIM uses real name)
+//   1. Verifies auth + broker access to the seller_listing (RLS gate)
+//   2. Delegates to loadCimContext() which returns either:
+//        mode='rich' → listing + valuation + financial_data +
+//                      valuation_methods + Agent 5 narrative
+//        mode='lean' → listing top-line fields only (12.14a fallback)
+//   3. Calls Claude Sonnet via agent-cim-draft with the full context
+//   4. Creates a child page under the "MSOS AI Drafts" Notion root
+//   5. Inserts an ai_agent_runs row (tracks spend/latency/model/mode)
+//   6. Inserts an ai_drafts row in pending_review status
+//   7. Fire-and-forgets an Open Brain capture
+//   8. Returns { draft_id, notion_page_id, notion_page_url, model, mode }
 //
 // total_tokens is omitted from the ai_agent_runs INSERT — Phase 12.13.2
 // fixed this as a GENERATED ALWAYS column and any value breaks the write.
@@ -25,7 +23,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createSsrClient } from '@/lib/supabase/server'
 import { createClient as createJsClient } from '@supabase/supabase-js'
-import { generateCimDraft, type CimListingInput } from '@/lib/agents/agent-cim-draft'
+import { generateCimDraft } from '@/lib/agents/agent-cim-draft'
+import { loadCimContext } from '@/lib/agents/cim-context-loader'
 import { createDraftPage, getAiDraftsRootPageId } from '@/lib/notion/client'
 import { toBrokerLicense } from '@/lib/types'
 import type { SubscriptionTier } from '@/lib/types'
@@ -65,16 +64,14 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // 2. Fetch seller_listing via RLS-scoped client. If the caller can read
-    //    the row, they have broker-or-listing scope on this deal — the same
-    //    gate as the OM route.
-    const { data: listingRow, error: listingErr } = await authClient
-      .from('seller_listings')
-      .select('id, name, industry, asking_price_usd, revenue_ttm_usd, sde_ttm_usd, ebitda_ttm_usd, owner_user_id, custom_fields')
-      .eq('id', dealId)
-      .single()
-
-    if (listingErr || !listingRow) {
+    // 2. Load CIM context via the shared loader. The loader enforces
+    //    RLS for both the listing and the linked valuation, and
+    //    gracefully degrades to lean mode when no valuation is linked
+    //    or the broker can't read it.
+    let cimContext
+    try {
+      cimContext = await loadCimContext(authClient, dealId)
+    } catch {
       return NextResponse.json(
         { error: 'Listing not found or access denied' },
         { status: 404 }
@@ -91,29 +88,14 @@ export async function POST(
       (profile?.subscription_tier as SubscriptionTier) || 'free'
     )
 
-    // 4. Build the CIM input from the listing row
-    const custom = (listingRow.custom_fields ?? {}) as Record<string, unknown>
-    const cimInput: CimListingInput = {
-      id: listingRow.id as string,
-      name: (listingRow.name as string) ?? null,
-      industry: (listingRow.industry as string) ?? null,
-      asking_price_usd: Number(listingRow.asking_price_usd ?? 0) || null,
-      revenue_ttm_usd: Number(listingRow.revenue_ttm_usd ?? 0) || null,
-      sde_ttm_usd: Number(listingRow.sde_ttm_usd ?? 0) || null,
-      ebitda_ttm_usd: Number(listingRow.ebitda_ttm_usd ?? 0) || null,
-      business_address: typeof custom.business_address === 'string' ? custom.business_address as string : null,
-      years_established: typeof custom.years_established === 'number' ? custom.years_established as number : null,
-      employee_count: typeof custom.employee_count === 'number' ? custom.employee_count as number : null,
-      broker_notes: typeof custom.broker_notes === 'string' ? custom.broker_notes as string : null,
-    }
+    // 4. Generate the CIM markdown via Claude
+    const draft = await generateCimDraft(cimContext, brokerLicense)
 
-    // 5. Generate the CIM markdown via Claude
-    const draft = await generateCimDraft(cimInput, brokerLicense)
-
-    // 6. Create the Notion child page under the AI Drafts root
+    // 5. Create the Notion child page under the AI Drafts root
     const rootPageId = getAiDraftsRootPageId()
-    const businessDisplay = (listingRow.name as string) || 'Unnamed Business'
-    const pageTitle = `${businessDisplay} — Confidential Information Memorandum — ${todayYmd()}`
+    const businessDisplay = cimContext.listing.name || 'Unnamed Business'
+    const modeSuffix = cimContext.mode === 'rich' ? '' : ' [LEAN]'
+    const pageTitle = `${businessDisplay} — Confidential Information Memorandum — ${todayYmd()}${modeSuffix}`
 
     const notionResult = await createDraftPage({
       rootPageId,
@@ -122,7 +104,7 @@ export async function POST(
       icon: '🔒',
     })
 
-    // 7. Record ai_agent_runs + ai_drafts using the service-role client
+    // 6. Record ai_agent_runs + ai_drafts using the service-role client
     //    (ai_agent_runs and ai_drafts have admin-only write RLS)
     const admin = getServiceClient()
 
@@ -138,6 +120,9 @@ export async function POST(
     const completedAt = new Date()
     const durationMs = Date.now() - t0
 
+    const valuationIdForRun =
+      cimContext.mode === 'rich' ? cimContext.valuation.id : null
+
     const { data: runRow, error: runErr } = await admin
       .from('ai_agent_runs')
       .insert({
@@ -150,12 +135,15 @@ export async function POST(
           listing_id: dealId,
           task: 'doc.draft',
           tier: draft.tier,
+          mode: cimContext.mode,
+          valuation_id: valuationIdForRun,
         },
         output_payload: {
           notion_page_id: notionResult.pageId,
           notion_page_url: notionResult.pageUrl,
           blocks_written: notionResult.blocksWritten,
           markdown_length: draft.markdown.length,
+          mode: draft.mode,
         },
         tool_calls: [],
         model: draft.model,
@@ -173,6 +161,27 @@ export async function POST(
       throw new Error(`failed to record ai_agent_runs row: ${runErr?.message}`)
     }
 
+    const draftPayload: Record<string, unknown> = {
+      title: pageTitle,
+      markdown: draft.markdown,
+      mode: cimContext.mode,
+      listing_name: cimContext.listing.name,
+      industry: cimContext.listing.industry,
+      asking_price_usd: cimContext.listing.asking_price_usd,
+      revenue_ttm_usd: cimContext.listing.revenue_ttm_usd,
+      sde_ttm_usd: cimContext.listing.sde_ttm_usd,
+      ebitda_ttm_usd: cimContext.listing.ebitda_ttm_usd,
+    }
+    if (cimContext.mode === 'rich') {
+      draftPayload.valuation_id = cimContext.valuation.id
+      draftPayload.valuation_status = cimContext.valuation.status
+      draftPayload.valuation_low = cimContext.valuation.valuation_low
+      draftPayload.valuation_mid = cimContext.valuation.valuation_mid
+      draftPayload.valuation_high = cimContext.valuation.valuation_high
+      draftPayload.financial_rows = cimContext.financials.length
+      draftPayload.methods_count = cimContext.methods.length
+    }
+
     const { data: draftRow, error: draftErr } = await admin
       .from('ai_drafts')
       .insert({
@@ -180,17 +189,8 @@ export async function POST(
         kind: 'writer.cim_draft',
         object_type: 'seller_listing',
         record_id: dealId,
-        payload: {
-          title: pageTitle,
-          markdown: draft.markdown,
-          listing_name: listingRow.name,
-          industry: listingRow.industry,
-          asking_price_usd: listingRow.asking_price_usd,
-          revenue_ttm_usd: listingRow.revenue_ttm_usd,
-          sde_ttm_usd: listingRow.sde_ttm_usd,
-          ebitda_ttm_usd: listingRow.ebitda_ttm_usd,
-        },
-        rationale: `Generated by agent_cim_writer (${draft.tier} → ${draft.model}) on ${todayYmd()}.`,
+        payload: draftPayload,
+        rationale: `Generated by agent_cim_writer (${draft.tier} → ${draft.model}, mode=${cimContext.mode}) on ${todayYmd()}.`,
         status: 'pending_review',
         notion_page_id: notionResult.pageId,
         notion_page_url: notionResult.pageUrl,
@@ -205,16 +205,24 @@ export async function POST(
       throw new Error(`failed to record ai_drafts row: ${draftErr?.message}`)
     }
 
-    // 8. Open Brain capture (non-blocking — failure does not fail the route)
+    // 7. Open Brain capture (non-blocking — failure does not fail the route)
     try {
       await admin.from('thoughts').insert({
-        content: `Generated CIM Draft for ${businessDisplay} (${listingRow.industry ?? 'unknown industry'}). Asking ${listingRow.asking_price_usd ? '$' + Number(listingRow.asking_price_usd).toLocaleString() : 'TBD'}. Notion: ${notionResult.pageUrl}`,
+        content: `Generated CIM Draft (${cimContext.mode}) for ${businessDisplay} (${cimContext.listing.industry ?? 'unknown industry'}). Asking ${cimContext.listing.asking_price_usd ? '$' + Number(cimContext.listing.asking_price_usd).toLocaleString() : 'TBD'}. Notion: ${notionResult.pageUrl}`,
         metadata: {
           type: 'reference',
           source: 'cim_writer_agent',
-          topics: ['cim', 'confidential information memorandum', listingRow.industry?.toLowerCase() || 'business', 'ai draft'],
+          topics: [
+            'cim',
+            'confidential information memorandum',
+            cimContext.listing.industry?.toLowerCase() || 'business',
+            'ai draft',
+            cimContext.mode === 'rich' ? 'rich-mode' : 'lean-mode',
+          ],
           people: [],
           listing_id: dealId,
+          valuation_id: valuationIdForRun,
+          mode: cimContext.mode,
           notion_page_id: notionResult.pageId,
           notion_page_url: notionResult.pageUrl,
           draft_id: draftRow.id,
@@ -233,6 +241,8 @@ export async function POST(
       notion_page_url: notionResult.pageUrl,
       model_used: draft.model,
       tier: draft.tier,
+      mode: draft.mode,
+      valuation_id: valuationIdForRun,
       prompt_tokens: draft.promptTokens,
       completion_tokens: draft.completionTokens,
       duration_ms: durationMs,
