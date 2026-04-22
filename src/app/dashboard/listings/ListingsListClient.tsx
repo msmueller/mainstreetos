@@ -11,24 +11,33 @@ const fmtCurrency = (n: number | null | undefined) =>
 const fmtDate = (iso: string | null | undefined) =>
   !iso ? '—' : new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 
-const STATUS_COLOR: Record<string, string> = {
+// Aligned with public.seller_listing_stage enum values
+const STAGE_COLOR: Record<string, string> = {
+  sourcing: 'bg-slate-50 text-slate-600 border-slate-200',
+  qualifying: 'bg-blue-50 text-blue-700 border-blue-200',
+  valuation: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+  mandate: 'bg-violet-50 text-violet-700 border-violet-200',
   active: 'bg-green-50 text-green-700 border-green-200',
+  under_loi: 'bg-pink-50 text-pink-700 border-pink-200',
   under_contract: 'bg-pink-50 text-pink-700 border-pink-200',
-  closed: 'bg-slate-50 text-slate-600 border-slate-200',
-  archived: 'bg-slate-50 text-slate-500 border-slate-200',
+  closing: 'bg-amber-50 text-amber-700 border-amber-200',
+  closed_won: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  closed_lost: 'bg-slate-50 text-slate-500 border-slate-200',
   on_hold: 'bg-amber-50 text-amber-700 border-amber-200',
 }
 
 const STAGE_LABELS: Record<string, string> = {
-  intake: 'Intake',
+  sourcing: 'Sourcing',
+  qualifying: 'Qualifying',
   valuation: 'Valuation',
-  packaging_marketing: 'Packaging & Marketing',
-  active_listing: 'Active Listing',
+  mandate: 'Mandate',
+  active: 'Active',
+  under_loi: 'Under LOI',
   under_contract: 'Under Contract',
-  due_diligence: 'Due Diligence',
   closing: 'Closing',
   closed_won: 'Closed Won',
   closed_lost: 'Closed Lost',
+  on_hold: 'On Hold',
 }
 
 export default function ListingsListClient({ rows }: { rows: SellerListingRow[] }) {
@@ -36,12 +45,12 @@ export default function ListingsListClient({ rows }: { rows: SellerListingRow[] 
 
   const columns = useMemo<ColumnDef<SellerListingRow>[]>(() => [
     {
-      key: 'listing_name',
+      key: 'name',
       label: 'Listing',
-      accessor: (r) => r.listing_name,
+      accessor: (r) => r.name,
       sortable: true,
       render: (r) => (
-        <span className="font-medium text-slate-900">{r.listing_name || '—'}</span>
+        <span className="font-medium text-slate-900">{r.name || '—'}</span>
       ),
     },
     {
@@ -52,54 +61,50 @@ export default function ListingsListClient({ rows }: { rows: SellerListingRow[] 
       sortable: true,
     },
     {
-      key: 'business_address',
-      label: 'Location',
-      accessor: (r) => r.business_address,
-      defaultVisible: true,
-    },
-    {
-      key: 'asking_price',
+      key: 'asking_price_usd',
       label: 'Asking Price',
-      accessor: (r) => r.asking_price,
+      accessor: (r) => r.asking_price_usd,
       sortable: true,
       align: 'right',
-      render: (r) => <span className="font-mono tabular-nums">{fmtCurrency(r.asking_price)}</span>,
+      render: (r) => <span className="font-mono tabular-nums">{fmtCurrency(r.asking_price_usd)}</span>,
     },
     {
-      key: 'annual_revenue',
-      label: 'Revenue',
-      accessor: (r) => r.annual_revenue,
+      key: 'revenue_ttm_usd',
+      label: 'Revenue (TTM)',
+      accessor: (r) => r.revenue_ttm_usd,
       sortable: true,
       align: 'right',
-      render: (r) => <span className="font-mono tabular-nums text-slate-600">{fmtCurrency(r.annual_revenue)}</span>,
+      render: (r) => <span className="font-mono tabular-nums text-slate-600">{fmtCurrency(r.revenue_ttm_usd)}</span>,
     },
     {
-      key: 'sde',
-      label: 'SDE',
-      accessor: (r) => r.sde,
+      key: 'sde_ttm_usd',
+      label: 'SDE (TTM)',
+      accessor: (r) => r.sde_ttm_usd,
       sortable: true,
       align: 'right',
-      render: (r) => <span className="font-mono tabular-nums text-slate-600">{fmtCurrency(r.sde)}</span>,
+      render: (r) => <span className="font-mono tabular-nums text-slate-600">{fmtCurrency(r.sde_ttm_usd)}</span>,
     },
     {
-      key: 'listing_status',
-      label: 'Status',
-      accessor: (r) => r.listing_status,
+      key: 'ebitda_ttm_usd',
+      label: 'EBITDA (TTM)',
+      accessor: (r) => r.ebitda_ttm_usd,
+      sortable: true,
+      align: 'right',
+      render: (r) => <span className="font-mono tabular-nums text-slate-600">{fmtCurrency(r.ebitda_ttm_usd)}</span>,
+      defaultVisible: false,
+    },
+    {
+      key: 'stage',
+      label: 'Stage',
+      accessor: (r) => r.stage,
       filterable: true,
       sortable: true,
       render: (r) => {
-        const s = r.listing_status || 'active'
-        const cls = STATUS_COLOR[s] || STATUS_COLOR.active
-        return <span className={`text-xs px-2 py-0.5 rounded-full border ${cls} capitalize`}>{s.replace(/_/g, ' ')}</span>
+        const s = r.stage || 'sourcing'
+        const cls = STAGE_COLOR[s] || STAGE_COLOR.sourcing
+        const label = STAGE_LABELS[s] || s
+        return <span className={`text-xs px-2 py-0.5 rounded-full border ${cls}`}>{label}</span>
       },
-    },
-    {
-      key: 'seller_stage',
-      label: 'Stage',
-      accessor: (r) => r.seller_stage,
-      filterable: true,
-      sortable: true,
-      render: (r) => r.seller_stage ? (STAGE_LABELS[r.seller_stage] || r.seller_stage) : '—',
     },
     {
       key: 'created_at',
@@ -113,16 +118,16 @@ export default function ListingsListClient({ rows }: { rows: SellerListingRow[] 
 
   const bulkActions = useMemo<BulkAction<SellerListingRow>[]>(() => [
     {
-      label: 'Mark as archived',
-      confirmText: 'Archive selected listings? (they stay in the database and can be restored)',
+      label: 'Mark on hold',
+      confirmText: 'Move selected listings to On Hold stage? (they stay in the database and can be restored)',
       onAction: async (selected) => {
         const ids = selected.map((r) => r.id)
         const { error } = await supabase
           .from('seller_listings')
-          .update({ listing_status: 'archived' })
+          .update({ stage: 'on_hold' })
           .in('id', ids)
         if (error) {
-          alert(`Failed to archive: ${error.message}`)
+          alert(`Failed to update stage: ${error.message}`)
           return
         }
         // Refresh by reloading — server component re-fetches
@@ -132,7 +137,7 @@ export default function ListingsListClient({ rows }: { rows: SellerListingRow[] 
     {
       label: 'Export selected as CSV',
       onAction: (selected) => {
-        const headers = ['listing_name', 'industry', 'asking_price', 'annual_revenue', 'sde', 'listing_status', 'seller_stage', 'business_address']
+        const headers = ['name', 'industry', 'asking_price_usd', 'revenue_ttm_usd', 'sde_ttm_usd', 'ebitda_ttm_usd', 'stage']
         const lines = [
           headers.join(','),
           ...selected.map((r) => headers.map((h) => {
@@ -162,7 +167,7 @@ export default function ListingsListClient({ rows }: { rows: SellerListingRow[] 
       bulkActions={bulkActions}
       entityName="listing"
       entity="seller_listings"
-      searchPlaceholder="Search listings by name, industry, location…"
+      searchPlaceholder="Search listings by name, industry…"
       emptyMessage="No listings match your filters."
     />
   )

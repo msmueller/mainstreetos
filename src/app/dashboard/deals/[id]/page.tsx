@@ -191,11 +191,36 @@ export default function BrokerDealDashboard() {
     setLoading(true)
     let live = true
     try {
-      // Deal
+      // Deal — try `deals` first; fall back to `seller_listings` so clicks
+      // coming from /dashboard/listings land on a live record and enable
+      // Generate OM Draft. Phase 12.13.1 fallback.
       const { data: dealRow, error: dealErr } = await supabase
         .from('deals').select('*').eq('id', id).maybeSingle()
-      if (dealErr || !dealRow) live = false
-      else setDeal(dealRow as Deal)
+      if (!dealErr && dealRow) {
+        setDeal(dealRow as Deal)
+      } else {
+        const { data: listingRow, error: listingErr } = await supabase
+          .from('seller_listings')
+          .select('id, name, industry, asking_price_usd, revenue_ttm_usd, sde_ttm_usd, stage, custom_fields')
+          .eq('id', id)
+          .maybeSingle()
+        if (!listingErr && listingRow) {
+          const custom = (listingRow.custom_fields as Record<string, unknown>) || {}
+          setDeal({
+            id: listingRow.id as string,
+            listing_name: (listingRow.name as string) || 'Unnamed Listing',
+            business_address: typeof custom.business_address === 'string' ? (custom.business_address as string) : null,
+            asking_price: listingRow.asking_price_usd != null ? Number(listingRow.asking_price_usd) : null,
+            annual_revenue: listingRow.revenue_ttm_usd != null ? Number(listingRow.revenue_ttm_usd) : null,
+            sde: listingRow.sde_ttm_usd != null ? Number(listingRow.sde_ttm_usd) : null,
+            seller_stage: (listingRow.stage as string) || null,
+            deal_status: 'active',
+          })
+          // Live listing — keep live=true so the OM draft button is enabled
+        } else {
+          live = false
+        }
+      }
 
       // Buyers via deal_access + contacts join
       const { data: accessRows, error: accessErr } = await supabase

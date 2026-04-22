@@ -5,15 +5,14 @@ export const dynamic = 'force-dynamic'
 
 export interface SellerListingRow {
   id: string
-  listing_name: string | null
+  name: string | null
   industry: string | null
-  business_address: string | null
-  asking_price: number | null
-  annual_revenue: number | null
-  sde: number | null
-  listing_status: string | null
-  seller_stage: string | null
-  broker_id: string | null
+  asking_price_usd: number | null
+  revenue_ttm_usd: number | null
+  sde_ttm_usd: number | null
+  ebitda_ttm_usd: number | null
+  stage: string | null
+  owner_user_id: string | null
   primary_contact_id: string | null
   created_at: string
 }
@@ -21,10 +20,14 @@ export interface SellerListingRow {
 export default async function ListingsPage() {
   const supabase = await createClient()
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('seller_listings')
-    .select('id, listing_name, industry, business_address, asking_price, annual_revenue, sde, listing_status, seller_stage, broker_id, primary_contact_id, created_at')
+    .select('id, name, industry, asking_price_usd, revenue_ttm_usd, sde_ttm_usd, ebitda_ttm_usd, stage, owner_user_id, primary_contact_id, created_at')
     .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('[listings/page] supabase error:', error)
+  }
 
   const rows = (data || []) as SellerListingRow[]
 
