@@ -173,18 +173,21 @@ export default function BrokerDealDashboard() {
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [uploadForm, setUploadForm] = useState({ name: '', type: 'other', min_stage: 'inquiry', tier: 'L1' })
 
-  // Phase 12.13 — OM draft state
-  type OmDraftHistoryItem = {
+  // Phase 12.13 / 12.14a — AI draft state (OM + CIM)
+  type AiDraftHistoryItem = {
     id: string
     created_at: string
     status: string
+    kind: string
     notion_page_url: string | null
     model_used: string | null
   }
   const [generatingOm, setGeneratingOm] = useState(false)
   const [omError, setOmError] = useState<string | null>(null)
-  const [omDrafts, setOmDrafts] = useState<OmDraftHistoryItem[]>([])
-  const [showOmHistory, setShowOmHistory] = useState(false)
+  const [generatingCim, setGeneratingCim] = useState(false)
+  const [cimError, setCimError] = useState<string | null>(null)
+  const [aiDrafts, setAiDrafts] = useState<AiDraftHistoryItem[]>([])
+  const [showAiHistory, setShowAiHistory] = useState(false)
 
   const loadAll = useCallback(async () => {
     if (!id) return
@@ -320,23 +323,23 @@ export default function BrokerDealDashboard() {
     return () => { cancelled = true; clearInterval(interval) }
   }, [id, supabase])
 
-  // Phase 12.13 — Load OM draft history for this listing
-  const loadOmDrafts = useCallback(async () => {
+  // Phase 12.13 / 12.14a — Load AI draft history for this listing (OM + CIM)
+  const loadAiDrafts = useCallback(async () => {
     if (!id) return
     const { data } = await supabase
       .from('ai_drafts')
-      .select('id, created_at, status, notion_page_url, model_used')
+      .select('id, created_at, status, kind, notion_page_url, model_used')
       .eq('object_type', 'seller_listing')
       .eq('record_id', id)
-      .eq('kind', 'writer.om_draft')
+      .in('kind', ['writer.om_draft', 'writer.cim_draft'])
       .order('created_at', { ascending: false })
-      .limit(10)
+      .limit(20)
     if (Array.isArray(data)) {
-      setOmDrafts(data as OmDraftHistoryItem[])
+      setAiDrafts(data as AiDraftHistoryItem[])
     }
   }, [id, supabase])
 
-  useEffect(() => { loadOmDrafts() }, [loadOmDrafts])
+  useEffect(() => { loadAiDrafts() }, [loadAiDrafts])
 
   async function handleGenerateOmDraft() {
     if (!id || generatingOm) return
@@ -349,12 +352,32 @@ export default function BrokerDealDashboard() {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
-      await loadOmDrafts()
-      setShowOmHistory(true)
+      await loadAiDrafts()
+      setShowAiHistory(true)
     } catch (err) {
       setOmError(err instanceof Error ? err.message : 'OM draft generation failed')
     } finally {
       setGeneratingOm(false)
+    }
+  }
+
+  async function handleGenerateCimDraft() {
+    if (!id || generatingCim) return
+    setGeneratingCim(true)
+    setCimError(null)
+    try {
+      const res = await fetch(`/api/deals/${id}/generate-cim-draft`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
+      await loadAiDrafts()
+      setShowAiHistory(true)
+    } catch (err) {
+      setCimError(err instanceof Error ? err.message : 'CIM draft generation failed')
+    } finally {
+      setGeneratingCim(false)
     }
   }
 
@@ -439,7 +462,7 @@ export default function BrokerDealDashboard() {
             <div className="text-right">
               <p className="text-2xl font-bold text-gray-900">{fmt(deal.asking_price)}</p>
               <p className="text-sm text-gray-500">Rev {fmt(deal.annual_revenue)} • SDE {fmt(deal.sde)}</p>
-              <div className="mt-3 flex items-center justify-end gap-2">
+              <div className="mt-3 flex items-center justify-end gap-2 flex-wrap">
                 <button
                   onClick={handleGenerateOmDraft}
                   disabled={generatingOm || usingDemo}
@@ -456,13 +479,28 @@ export default function BrokerDealDashboard() {
                   )}
                 </button>
                 <button
-                  onClick={() => setShowOmHistory((v) => !v)}
+                  onClick={handleGenerateCimDraft}
+                  disabled={generatingCim || usingDemo}
+                  title={usingDemo ? 'Connect live deal data to generate CIM drafts.' : 'Generate a post-NDA Confidential Information Memorandum draft to Notion.'}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+                >
+                  {generatingCim ? (
+                    <>
+                      <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Generating…
+                    </>
+                  ) : (
+                    <>Generate CIM Draft</>
+                  )}
+                </button>
+                <button
+                  onClick={() => setShowAiHistory((v) => !v)}
                   className="relative inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg transition-colors"
                 >
-                  OM History
-                  {omDrafts.length > 0 && (
+                  AI Drafts History
+                  {aiDrafts.length > 0 && (
                     <span className="inline-flex items-center justify-center min-w-[18px] h-4 px-1 text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-300 rounded-full">
-                      {omDrafts.length}
+                      {aiDrafts.length}
                     </span>
                   )}
                 </button>
@@ -480,60 +518,75 @@ export default function BrokerDealDashboard() {
               </div>
               {omError && (
                 <p className="mt-2 text-xs text-red-600 max-w-xs ml-auto">
-                  {omError}
+                  OM: {omError}
+                </p>
+              )}
+              {cimError && (
+                <p className="mt-2 text-xs text-red-600 max-w-xs ml-auto">
+                  CIM: {cimError}
                 </p>
               )}
             </div>
           </div>
 
-          {showOmHistory && (
+          {showAiHistory && (
             <div className="mt-4 border border-slate-200 rounded-lg bg-slate-50">
               <div className="flex items-center justify-between px-4 py-2 border-b border-slate-200">
                 <h3 className="text-xs font-semibold text-slate-700">
-                  OM Draft History
+                  AI Drafts History
                 </h3>
                 <button
-                  onClick={() => setShowOmHistory(false)}
+                  onClick={() => setShowAiHistory(false)}
                   className="text-xs text-slate-500 hover:text-slate-700"
                 >
                   Close
                 </button>
               </div>
-              {omDrafts.length === 0 ? (
+              {aiDrafts.length === 0 ? (
                 <p className="px-4 py-3 text-xs text-slate-500">
-                  No OM drafts yet. Click &quot;Generate OM Draft&quot; to create the first one.
+                  No AI drafts yet. Click &quot;Generate OM Draft&quot; or &quot;Generate CIM Draft&quot; to create the first one.
                 </p>
               ) : (
                 <ul className="divide-y divide-slate-200">
-                  {omDrafts.map((d) => (
-                    <li key={d.id} className="flex items-center justify-between px-4 py-2">
-                      <div className="min-w-0">
-                        <p className="text-xs font-medium text-slate-800 truncate">
-                          {new Date(d.created_at).toLocaleString('en-US', {
-                            month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-                          })}
-                          <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full border border-slate-300 bg-white text-slate-600">
-                            {d.status.replace(/_/g, ' ')}
-                          </span>
-                        </p>
-                        <p className="text-[11px] text-slate-500 truncate">
-                          {d.model_used || '—'}
-                        </p>
-                      </div>
-                      {d.notion_page_url ? (
-                        <a
-                          href={d.notion_page_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs font-medium text-blue-600 hover:text-blue-800 underline underline-offset-2 shrink-0"
-                        >
-                          Open in Notion ↗
-                        </a>
-                      ) : (
-                        <span className="text-xs text-slate-400">No link</span>
-                      )}
-                    </li>
-                  ))}
+                  {aiDrafts.map((d) => {
+                    const isCim = d.kind === 'writer.cim_draft'
+                    const kindLabel = isCim ? 'CIM' : 'OM'
+                    const kindClasses = isCim
+                      ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                      : 'bg-blue-50 text-blue-700 border-blue-200'
+                    return (
+                      <li key={d.id} className="flex items-center justify-between px-4 py-2">
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium text-slate-800 truncate">
+                            <span className={`mr-2 inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full border ${kindClasses}`}>
+                              {kindLabel}
+                            </span>
+                            {new Date(d.created_at).toLocaleString('en-US', {
+                              month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+                            })}
+                            <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full border border-slate-300 bg-white text-slate-600">
+                              {d.status.replace(/_/g, ' ')}
+                            </span>
+                          </p>
+                          <p className="text-[11px] text-slate-500 truncate">
+                            {d.model_used || '—'}
+                          </p>
+                        </div>
+                        {d.notion_page_url ? (
+                          <a
+                            href={d.notion_page_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs font-medium text-blue-600 hover:text-blue-800 underline underline-offset-2 shrink-0"
+                          >
+                            Open in Notion ↗
+                          </a>
+                        ) : (
+                          <span className="text-xs text-slate-400">No link</span>
+                        )}
+                      </li>
+                    )
+                  })}
                 </ul>
               )}
             </div>
