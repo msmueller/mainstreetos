@@ -1,131 +1,197 @@
-# LEAD-ROUTER-SPEC.md
+# LEAD-ROUTER-SPEC.md (v2)
 
-**Status:** v1 design — ready to build
-**Author:** Mark Mueller, with Claude (Opus 4.7) architecture session
+**Status:** v2 design — Paradigm B2 (direct Gmail API). Supersedes v1 (Saleshandy-based).
+**Author:** Mark Mueller, with Claude (Opus 4.7) architecture sessions
 **Created:** April 29, 2026
-**Last updated:** April 29, 2026
+**Last updated:** April 29, 2026 (evening)
+**Replaces:** v1 dated April 29, 2026 (morning)
+
+## What changed from v1
+
+v1 routed outbound through Saleshandy's API. v2 sends directly through Gmail API and owns the entire send/track/sequence stack inside MainStreetOS.
+
+The reason: this is **inquiry-driven, relationship-bearing brokerage email**, not cold outreach. Recipients (buyers, sellers, attorneys, lenders, CPAs, co-brokers) expect emails to come from Mark Mueller's actual Gmail inbox. They will reply to that thread, eventually meet in person. Routing through a third-party SMTP layer creates the wrong signal and adds unnecessary cost. Send volume is low (5–30/day), so Saleshandy's deliverability infrastructure is overkill — Gmail's reputation on an established Workspace account on a real domain is better-suited.
+
+The matcher, templating, Notion integration, Activity Log, and Supabase schema patterns from v1 carry forward. The send layer is replaced. New components: extractor, renderer, scheduler, calendar, gmail.
 
 ## Purpose
 
-The Lead Router is the brain of the MainStreetOS™ outbound communication system. It takes a buyer inquiry email (typically from BizBuySell) and decides:
+The Lead Router is the brain of MainStreetOS™'s outbound communication system. It takes a buyer inquiry email (typically from BizBuySell), and:
 
-1. Which active listing the buyer is asking about
-2. Which email template best fits this scenario
-3. What deal data should populate the template
-4. Which email sequence to enroll the prospect in
-5. How to log the decision and engagement events back to the system of record
+1. Extracts buyer attributes from the email body using Claude
+2. Matches the inquiry to one of Mark's active listings using Claude
+3. Picks the right template (per-listing → per-industry → generic fallback)
+4. Renders the template with variables resolved from the lead, the listing, and external sources
+5. Sends from Mark's Gmail account via Gmail API
+6. Schedules follow-up sequence steps
+7. Watches inbound Gmail for replies via Pub/Sub; cancels remaining sequence steps when a reply arrives
+8. Logs every decision and engagement event
 
-It does NOT send email. Saleshandy sends email. The Lead Router is the matching, decisioning, and orchestration layer that sits in front of Saleshandy and connects it to Notion (system of record), Supabase (state and templates), and a Google Sheets Activity Log.
+It owns the entire send/track/sequence stack — no third-party email engine.
 
 ## Why this exists
 
-Existing email tools (Gmelius, Saleshandy, Lemlist, Klenty, etc.) assume the user knows which sequence each prospect belongs in. For inquiry-driven brokerage workflow — where a buyer emails about one of N active listings — that decision is the hard part. The Lead Router solves it.
+Existing tools assume the user knows which sequence each prospect belongs in. For inquiry-driven brokerage workflow, the matching and templating decision is the hard part. The Lead Router solves it. v2 also makes it the *send* engine, which removes vendor dependency and produces emails that look and feel like personal correspondence (because they are).
 
-This is also a productization candidate for the MainStreetOS SaaS tier ($497–$1,497/mo). Architecture choices throughout this spec keep that path clean: templates are data not code, the matcher is configurable per broker, integrations are decoupled.
+This is also the differentiated feature of MainStreetOS as a SaaS product. Architecture choices keep the productization path clean: templates are data not code, the matcher is configurable per broker, the sender interface is abstracted.
 
 ---
 
 ## Architecture overview
 
 ```
-BizBuySell → Gmail → GetSlap → Notion LEADS row
-                                     │
-                                     ▼ (Notion automation webhook)
-                          ┌──────────────────────────┐
-                          │   POST /api/route        │
-                          │   Lead Router            │
-                          │                          │
-                          │   1. Fetch lead context  │
-                          │   2. Match to listing    │
-                          │   3. Pick template       │
-                          │   4. Populate variables  │
-                          │   5. Enroll in sequence  │
-                          │   6. Log everything      │
-                          └────────┬─────────────────┘
-                                   │
-            ┌──────────────────────┼──────────────────────┐
-            ▼                      ▼                      ▼
-     Saleshandy API           Notion API          Sheets MCP / API
-     (POST prospect          (update LEAD row     (append to
-      to sequence)            with match data)     Activity Log)
+BizBuySell → Gmail Inbox
+                 │
+                 ▼ (Notion automation OR Gmail watch on incoming)
+            Notion LEADS row created
+                 │
+                 ▼ (Notion webhook)
+        ┌────────────────────────────────┐
+        │   POST /api/router/route       │
+        │                                │
+        │   1. Extract buyer attributes  │  → extractor.ts (Claude)
+        │   2. Match to listing          │  → matcher.ts (Claude)
+        │   3. Pick template             │  → templates.ts (Supabase)
+        │   4. Resolve variables         │  → renderer.ts
+        │   5. Render subject + body     │  → renderer.ts
+        │   6. Send via Gmail API        │  → gmail.ts
+        │   7. Schedule follow-ups       │  → scheduler.ts
+        │   8. Log everything            │  → notion.ts, sheets, supabase
+        └────────┬───────────────────────┘
+                 │
+        ┌────────┼────────┬─────────────┐
+        ▼        ▼        ▼             ▼
+   Gmail API   Notion   Sheets    Supabase
+   (send)     (update)  (log)     (schedule + audit)
 
 
-Saleshandy → webhook events → POST /api/saleshandy/events
-                                     │
-                                     ▼
-                          Update Notion + Activity Log
-                          Trigger stage transition if reply
+Vercel cron (every 15 min)
+        │
+        ▼
+   POST /api/router/cron/process-scheduled
+        │
+        ▼ (for each pending send)
+   Check thread for reply → if reply, cancel
+   Otherwise → render → send → log
+
+
+Gmail Pub/Sub watch on Mark's inbox
+        │
+        ▼ (any new inbound message)
+   POST /api/router/gmail/events
+        │
+        ▼
+   Match to tracked thread_id
+   Cancel pending scheduled_sends for thread
+   Update Notion engagement
+   Append to Activity Log
+   Optionally classify reply intent via Claude
 ```
+
+---
+
+## Stack (existing — don't replace)
+
+- **Frontend / API:** Next.js on Vercel (MainStreetOS repo)
+- **Database / cache:** Supabase (Postgres + pgvector)
+- **System of record:** Notion (Broker OS workspace — LEADS DB, Listings DB)
+- **Email engine:** Gmail API (NEW in v2 — replaces Saleshandy)
+- **Activity Log:** Google Sheet (Sheets MCP integration already deployed)
+- **AI calls:** Anthropic API (Claude Opus 4.7)
+- **Workflow glue:** Relay.app, GetSlap (still relevant for Notion automations)
 
 ---
 
 ## Repo structure
 
-The Lead Router lives inside the MainStreetOS Next.js app. Two valid placements:
-
-**Option A (recommended for v1):** Inline under the main app
 ```
 mainstreetos/
-├── app/
-│   └── api/
-│       └── router/
-│           ├── route/route.ts
-│           ├── saleshandy/
-│           │   └── events/route.ts
-│           ├── reroute/route.ts
-│           └── health/route.ts
-├── lib/
-│   └── router/
-│       ├── matcher.ts
-│       ├── templates.ts
-│       ├── saleshandy.ts
-│       ├── notion.ts
-│       ├── supabase.ts
-│       ├── activity-log.ts
-│       └── claude.ts
-└── prompts/
-    └── router/
-        ├── match-listing.md
-        └── pick-template.md
+├── app/api/router/
+│   ├── route/route.ts                    # Inbound: new Notion lead
+│   ├── reroute/route.ts                  # Manual re-route
+│   ├── health/route.ts                   # Health check
+│   ├── cron/
+│   │   ├── process-scheduled/route.ts    # Process pending sends
+│   │   └── renew-gmail-watch/route.ts    # Renew Pub/Sub watch
+│   └── gmail/
+│       └── events/route.ts               # Gmail Pub/Sub webhook
+├── lib/router/
+│   ├── extractor.ts                      # Buyer attribute extraction
+│   ├── matcher.ts                        # Listing match
+│   ├── templates.ts                      # Template picker
+│   ├── renderer.ts                       # Variable substitution
+│   ├── sender.ts                         # Sender interface
+│   ├── gmail.ts                          # Gmail API implementation
+│   ├── scheduler.ts                      # Sequence scheduling
+│   ├── calendar.ts                       # Calendar availability
+│   ├── notion.ts                         # Notion wrapper
+│   ├── supabase.ts                       # Supabase wrapper
+│   ├── activity-log.ts                   # Sheets append helper
+│   └── claude.ts                         # Anthropic SDK wrapper
+├── prompts/router/
+│   ├── extract-attributes.md
+│   ├── match-listing.md
+│   └── classify-reply.md                 # v1.1
+├── vercel.json                           # Cron config
+└── docs/
+    └── LEAD-ROUTER-SPEC.md               # This file
 ```
-
-**Option B:** Separate workspace package (`apps/lead-router/`) — defer until productization.
 
 ---
 
 ## Data model
 
-### Supabase tables (new)
+### Supabase tables (apply as new migration)
 
 ```sql
--- Templates: source of truth for outbound copy
+-- Templates
 CREATE TABLE templates (
   id                    text PRIMARY KEY,
   name                  text NOT NULL,
   category              text NOT NULL,
   industry_tags         text[],
   listing_type          text,
+  listing_id            text,                 -- per-listing override; nullable
   subject               text NOT NULL,
   body_html             text NOT NULL,
   body_text             text NOT NULL,
   variables             jsonb,
-  saleshandy_step_id    text,
   active                boolean DEFAULT true,
   created_at            timestamptz DEFAULT now(),
   updated_at            timestamptz DEFAULT now()
 );
 
--- Sequences: which Saleshandy sequence handles which scenario
+CREATE INDEX idx_templates_listing
+  ON templates(listing_id)
+  WHERE listing_id IS NOT NULL;
+CREATE INDEX idx_templates_category_active
+  ON templates(category)
+  WHERE active = true;
+
+-- Sequences
 CREATE TABLE sequences (
   id                    text PRIMARY KEY,
   name                  text NOT NULL,
-  saleshandy_seq_id     text NOT NULL,
   trigger_condition     text,
   description           text,
   active                boolean DEFAULT true
 );
 
--- Match log: every routing decision
+-- Sequence steps
+CREATE TABLE sequence_steps (
+  id                    serial PRIMARY KEY,
+  sequence_id           text REFERENCES sequences(id),
+  step_number           integer NOT NULL,
+  delay_days            integer NOT NULL,
+  template_id           text REFERENCES templates(id),
+  stop_on_reply         boolean DEFAULT true,
+  created_at            timestamptz DEFAULT now()
+);
+
+CREATE UNIQUE INDEX idx_sequence_steps_unique
+  ON sequence_steps(sequence_id, step_number);
+
+-- Match decisions (audit log)
 CREATE TABLE match_decisions (
   id                    serial PRIMARY KEY,
   lead_id               text NOT NULL,
@@ -133,23 +199,61 @@ CREATE TABLE match_decisions (
   matched_listing_id    text,
   match_confidence      numeric(3,2),
   match_reasoning       text,
+  extracted_attributes  jsonb,
   template_id           text REFERENCES templates(id),
   sequence_id           text REFERENCES sequences(id),
   variables_used        jsonb,
-  saleshandy_prospect_id text,
   status                text,
   error                 text,
   created_at            timestamptz DEFAULT now()
 );
 
 CREATE UNIQUE INDEX idx_match_decisions_lead_id_active
-  ON match_decisions (lead_id)
+  ON match_decisions(lead_id)
   WHERE status = 'enrolled';
 
--- Listings cache: synced from Notion for fast matching
+-- Scheduled sends (cron processes this queue)
+CREATE TABLE scheduled_sends (
+  id                    serial PRIMARY KEY,
+  lead_id               text NOT NULL,
+  sequence_id           text NOT NULL,
+  step_number           integer NOT NULL,
+  template_id           text NOT NULL,
+  scheduled_for         timestamptz NOT NULL,
+  status                text NOT NULL DEFAULT 'pending',
+  gmail_thread_id       text,
+  gmail_message_id      text,
+  send_attempts         integer DEFAULT 0,
+  last_error            text,
+  sent_at               timestamptz,
+  created_at            timestamptz DEFAULT now()
+);
+
+CREATE INDEX idx_scheduled_pending
+  ON scheduled_sends(scheduled_for, status)
+  WHERE status = 'pending';
+CREATE INDEX idx_scheduled_thread
+  ON scheduled_sends(gmail_thread_id)
+  WHERE gmail_thread_id IS NOT NULL AND status = 'pending';
+
+-- Tracked threads (lookup for inbound webhook)
+CREATE TABLE tracked_threads (
+  gmail_thread_id       text PRIMARY KEY,
+  lead_id               text NOT NULL,
+  matched_listing_id    text,
+  first_message_at      timestamptz,
+  last_outbound_at      timestamptz,
+  last_inbound_at       timestamptz,
+  reply_count           integer DEFAULT 0,
+  status                text DEFAULT 'active',
+  created_at            timestamptz DEFAULT now()
+);
+
+-- Listings cache (synced from Notion for fast match)
 CREATE TABLE listings_cache (
   notion_id             text PRIMARY KEY,
   name                  text,
+  listing_number        text,
   industry              text,
   naics                 text,
   location              text,
@@ -160,29 +264,26 @@ CREATE TABLE listings_cache (
   description           text,
   keywords              text[],
   cobroker              text,
+  om_link               text,
+  cim_link              text,
+  bvr_link              text,
+  workbook_link         text,
+  nda_link              text,
+  bbs_link              text,
   last_synced           timestamptz DEFAULT now()
 );
 
-CREATE INDEX idx_listings_active ON listings_cache (status) WHERE status = 'active';
+CREATE INDEX idx_listings_active
+  ON listings_cache(status)
+  WHERE status = 'active';
+
+-- Suppression list (Phase 6)
+CREATE TABLE suppressed_emails (
+  email                 text PRIMARY KEY,
+  reason                text,
+  suppressed_at         timestamptz DEFAULT now()
+);
 ```
-
-### Category enum (templates.category)
-
-- `initial_response` — first reply to inquiry
-- `nda_request` — sending NDA
-- `cim_followup` — after CIM has been sent
-- `loi_received` — when LOI comes in
-- `due_diligence` — DD coordination
-- `closing` — closing logistics
-- `unmatched` — fallback when no listing matches
-
-### Trigger condition enum (sequences.trigger_condition)
-
-- `new_buyer` — first time hearing from this email
-- `returning_buyer` — buyer has prior history
-- `multi_interest` — buyer asked about multiple listings
-- `cobroker_referral` — Sung Yun (or other) referred
-- `unmatched` — couldn't match to a listing
 
 ### Notion LEADS DB additions
 
@@ -193,379 +294,115 @@ CREATE INDEX idx_listings_active ON listings_cache (status) WHERE status = 'acti
 | `match_confidence` | Number | Lead Router |
 | `template_used` | Text | Lead Router |
 | `sequence_enrolled` | Text | Lead Router |
-| `saleshandy_prospect_id` | Text | Lead Router |
-| `last_engagement` | Date | Saleshandy webhook |
-| `engagement_type` | Select: sent / opened / clicked / replied / bounced | Saleshandy webhook |
+| `gmail_thread_id` | Text | Lead Router |
+| `last_engagement` | Date | Gmail webhook |
+| `engagement_type` | Select: sent / replied / bounced | Gmail webhook |
+| `buyer_first_name` | Text | Extractor |
+| `buyer_last_name` | Text | Extractor |
+| `buyer_phone` | Phone | Extractor |
+| `buyer_investment_range` | Text | Extractor |
+| `buyer_timeframe` | Text | Extractor |
+| `buyer_experience` | Text | Extractor |
+| `buyer_industry_interest` | Text | Extractor |
+| `extraction_confidence` | Number | Extractor |
+| `urgency_level` | Select: low / medium / high | Extractor |
+| `sophistication_level` | Select: novice / experienced / broker | Extractor |
+
+### Notion Listings DB additions
+
+These may already exist; verify:
+
+| Property | Type |
+|---|---|
+| `listing_number` | Text (BBS reference) |
+| `om_link` | URL |
+| `cim_link` | URL |
+| `bvr_link` | URL |
+| `workbook_link` | URL |
+| `nda_link` | URL |
+| `bbs_link` | URL |
 
 ---
 
-## API routes
+## Component specs
 
-### `POST /api/router/route`
+### 1. `lib/router/extractor.ts`
 
-**Purpose:** Main inbound — Notion webhook calls this when a new lead row is created with `router_status = pending`.
-
-**Auth:** Shared secret in `x-router-secret` header. Compared against `process.env.ROUTER_SECRET`.
-
-**Query params:**
-- `dry_run=true` — runs the full match + template logic, returns the would-be result, but does NOT call Saleshandy or update Notion.
-
-**Request body:**
-```json
-{
-  "lead_id": "notion-page-id-here"
-}
-```
-
-**Response (success):**
-```json
-{
-  "status": "routed",
-  "match": {
-    "listing_id": "...",
-    "confidence": 0.87,
-    "scenario": "new_buyer",
-    "reasoning": "..."
-  },
-  "template": "tpl_pizzeria_initial",
-  "saleshandy_prospect_id": "..."
-}
-```
-
-**Response (low confidence):**
-```json
-{
-  "status": "manual_review",
-  "match": { ... }
-}
-```
-
-**Implementation outline:**
+Pulls structured buyer attributes from inquiry email body.
 
 ```typescript
-export async function POST(req: NextRequest) {
-  // Auth check
-  const auth = req.headers.get('x-router-secret');
-  if (auth !== process.env.ROUTER_SECRET) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  }
-
-  const url = new URL(req.url);
-  const dryRun = url.searchParams.get('dry_run') === 'true';
-  const { lead_id } = await req.json();
-  if (!lead_id) {
-    return NextResponse.json({ error: 'lead_id required' }, { status: 400 });
-  }
-
-  // Idempotency check
-  const existing = await checkExistingEnrollment(lead_id);
-  if (existing && !dryRun) {
-    return NextResponse.json({
-      status: 'already_routed',
-      saleshandy_prospect_id: existing.saleshandy_prospect_id
-    });
-  }
-
-  try {
-    const lead = await fetchLeadContext(lead_id);
-    const listings = await fetchActiveListings();
-    const match = await matchListing({ lead, listings });
-
-    if (match.confidence < 0.6) {
-      if (!dryRun) await markForManualReview(lead_id, match);
-      return NextResponse.json({ status: 'manual_review', match });
-    }
-
-    const template = await pickTemplate({
-      scenario: match.scenario,
-      listing_id: match.matched_listing_id,
-      industry: match.industry,
-    });
-
-    const variables = await populateVariables({
-      template,
-      lead,
-      listing_id: match.matched_listing_id,
-    });
-
-    if (dryRun) {
-      return NextResponse.json({
-        status: 'dry_run',
-        match,
-        template: template.id,
-        variables,
-      });
-    }
-
-    const saleshandyResult = await enrollProspect({
-      email: lead.buyer_email,
-      first_name: lead.buyer_first_name,
-      last_name: lead.buyer_last_name,
-      sequence_step_id: template.saleshandy_step_id,
-      custom_fields: variables,
-    });
-
-    await updateNotionLead(lead_id, {
-      router_status: 'routed',
-      matched_listing: match.matched_listing_id,
-      match_confidence: match.confidence,
-      template_used: template.id,
-      sequence_enrolled: template.sequence_id,
-      saleshandy_prospect_id: saleshandyResult.prospect_id,
-    });
-
-    await logMatchDecision({
-      lead_id,
-      matched_listing_id: match.matched_listing_id,
-      match_confidence: match.confidence,
-      match_reasoning: match.reasoning,
-      template_id: template.id,
-      sequence_id: template.sequence_id,
-      variables_used: variables,
-      saleshandy_prospect_id: saleshandyResult.prospect_id,
-      status: 'enrolled',
-    });
-
-    await appendActivity({
-      lead_id,
-      business_name: match.business_name,
-      direction: 'Outbound',
-      type: 'Email',
-      subject: `Routed: ${template.name}`,
-      outcome: 'Sent',
-      notes: `Matched to ${match.business_name} (confidence ${match.confidence}). Template: ${template.id}.`,
-    });
-
-    return NextResponse.json({
-      status: 'routed',
-      match,
-      template: template.id,
-      saleshandy_prospect_id: saleshandyResult.prospect_id,
-    });
-  } catch (err: any) {
-    console.error('Router error:', err.message);
-    await logMatchDecision({
-      lead_id,
-      status: 'failed',
-      error: err.message,
-    });
-    return NextResponse.json({ error: err.message }, { status: 500 });
-  }
-}
-```
-
-### `POST /api/router/saleshandy/events`
-
-**Purpose:** Receives Saleshandy webhook events (open, click, reply, bounce) and updates Notion + Activity Log.
-
-**Auth:** Custom header set when configuring webhook in Saleshandy dashboard.
-
-**Implementation outline:**
-
-```typescript
-export async function POST(req: NextRequest) {
-  const event = await req.json();
-
-  const lead = await findLeadBySaleshandyId(event.prospect_id);
-  if (!lead) {
-    return NextResponse.json({ status: 'unknown_prospect' });
-  }
-
-  await updateNotionLead(lead.id, {
-    last_engagement: new Date(event.timestamp),
-    engagement_type: event.type.replace('email.', ''),
-  });
-
-  await appendActivity({
-    lead_id: lead.id,
-    business_name: lead.matched_listing_name,
-    direction: 'Inbound',
-    type: 'Email',
-    subject: event.data?.subject ?? '',
-    outcome: event.type === 'email.replied' ? 'Replied' : event.type.replace('email.', ''),
-  });
-
-  if (event.type === 'email.replied') {
-    await triggerStageTransition(lead.id, event.data?.body);
-  }
-
-  return NextResponse.json({ status: 'logged' });
-}
-```
-
-### `POST /api/router/reroute`
-
-**Purpose:** Manually re-route a lead. Useful when the initial match was wrong, or when claude.ai (via the MCP) needs to update routing.
-
-**Auth:** Shared secret.
-
-**Body:** `{ lead_id, force?: boolean }`
-
-Defer implementation until v1.1.
-
-### `GET /api/router/health`
-
-**Purpose:** Health check + connectivity test for SH, Notion, Supabase. Returns 200 if all three respond.
-
----
-
-## The matcher (the only Claude API call)
-
-This is the heart of the system. Keep it tight, structured, and fast.
-
-### `lib/router/matcher.ts`
-
-```typescript
-import Anthropic from '@anthropic-ai/sdk';
-import fs from 'fs/promises';
-import path from 'path';
-
-const client = new Anthropic();
-
-let cachedSystemPrompt: string | null = null;
-
-async function getSystemPrompt(): Promise<string> {
-  if (cachedSystemPrompt) return cachedSystemPrompt;
-  cachedSystemPrompt = await fs.readFile(
-    path.join(process.cwd(), 'prompts/router/match-listing.md'),
-    'utf-8'
-  );
-  return cachedSystemPrompt;
-}
-
-export type MatchResult = {
-  matched_listing_index: number | null;
-  matched_listing_id: string | null;
-  business_name: string | null;
-  industry: string | null;
-  confidence: number;
-  scenario: 'new_buyer' | 'returning_buyer' | 'multi_interest' | 'cobroker_referral' | 'unmatched';
-  reasoning: string;
-  buyer_sophistication: 'novice' | 'experienced' | 'broker' | 'unknown';
-  urgency_signal: 'low' | 'medium' | 'high';
+export type ExtractedAttributes = {
+  buyer_first_name: string | null;
+  buyer_last_name: string | null;
+  buyer_email: string | null;
+  buyer_phone: string | null;
+  buyer_investment_range: string | null;
+  buyer_timeframe: string | null;
+  buyer_experience: string | null;
+  buyer_industry_interest: string | null;
+  buyer_specific_listing_mentioned: string | null;
+  urgency_level: 'low' | 'medium' | 'high' | 'unknown';
+  sophistication_level: 'novice' | 'experienced' | 'broker' | 'unknown';
+  extraction_confidence: number;
 };
 
-export async function matchListing({
-  lead,
-  listings,
-}: {
-  lead: LeadContext;
-  listings: Listing[];
-}): Promise<MatchResult> {
-  const systemPrompt = await getSystemPrompt();
-
-  const userMessage = `
-# Inquiry Email
-From: ${lead.buyer_email}
-Subject: ${lead.email_subject}
-Body:
-${lead.email_body}
-
-# Lead metadata
-Source: ${lead.source}
-Inquiry date: ${lead.created_at}
-Co-broker referral: ${lead.cobroker ?? 'none'}
-Previous interactions: ${lead.previous_interactions_count}
-
-# Active Listings
-${listings.map((l, i) => `
-[${i}] ${l.name}
-  ID: ${l.notion_id}
-  Industry: ${l.industry} (NAICS ${l.naics})
-  Location: ${l.location}
-  Asking: $${l.asking_price?.toLocaleString() ?? 'N/A'}
-  SDE: $${l.sde?.toLocaleString() ?? 'N/A'}
-  Co-broker: ${l.cobroker ?? 'none'}
-  Description: ${l.description}
-  Keywords: ${l.keywords?.join(', ') ?? ''}
-`).join('\n')}
-
-Return ONLY a JSON object matching the schema in your system prompt. No preamble. No markdown fencing.
-`.trim();
-
-  const response = await client.messages.create({
-    model: 'claude-opus-4-7',
-    max_tokens: 1024,
-    system: systemPrompt,
-    messages: [{ role: 'user', content: userMessage }],
-  });
-
-  const text = response.content[0].type === 'text' ? response.content[0].text : '';
-  const cleaned = text.replace(/```json|```/g, '').trim();
-
-  try {
-    return JSON.parse(cleaned) as MatchResult;
-  } catch (err) {
-    throw new Error(`Matcher returned invalid JSON: ${cleaned.slice(0, 200)}`);
-  }
-}
+export async function extractAttributes(
+  emailBody: string,
+  sender: string
+): Promise<ExtractedAttributes>;
 ```
 
-### `prompts/router/match-listing.md`
+System prompt at `prompts/router/extract-attributes.md`:
 
-```markdown
-You are a business brokerage assistant for CRE Resources, LLC. Your job is to match a buyer inquiry email to one of the broker's active listings, or determine that no match exists.
+```
+You are extracting structured information from a buyer inquiry email sent to a business broker. Extract ONLY information explicitly present in the email. Do NOT infer.
 
-## Output schema
-
-Return ONLY this JSON object. No preamble. No markdown fencing.
+Return ONLY a JSON object matching this schema:
 
 {
-  "matched_listing_index": <integer index from listings array, or null>,
-  "matched_listing_id": <Notion ID string, or null>,
-  "business_name": <listing name string, or null>,
-  "industry": <industry string, or null>,
-  "confidence": <number 0.0 to 1.0>,
-  "scenario": "new_buyer" | "returning_buyer" | "multi_interest" | "cobroker_referral" | "unmatched",
-  "reasoning": "<one sentence explaining the match>",
-  "buyer_sophistication": "novice" | "experienced" | "broker" | "unknown",
-  "urgency_signal": "low" | "medium" | "high"
+  "buyer_first_name": <string or null>,
+  "buyer_last_name": <string or null>,
+  "buyer_email": <string or null>,
+  "buyer_phone": <string or null>,
+  "buyer_investment_range": <string or null>,
+  "buyer_timeframe": <string or null>,
+  "buyer_experience": <string under 20 words or null>,
+  "buyer_industry_interest": <string or null>,
+  "buyer_specific_listing_mentioned": <string or null>,
+  "urgency_level": "low" | "medium" | "high" | "unknown",
+  "sophistication_level": "novice" | "experienced" | "broker" | "unknown",
+  "extraction_confidence": <number 0.0 to 1.0>
 }
 
-## Confidence scoring
+Rules:
+- For buyer_investment_range, preserve the buyer's wording ("$400K-$500K", "around half a million", "up to $2M")
+- For buyer_timeframe, preserve the buyer's wording ("3-4 months", "by year-end", "ASAP")
+- For buyer_experience, summarize in your own words but keep under 20 words
+- urgency_level "high" requires explicit timeline language, financing pre-approval, or stated deadline
+- sophistication_level "broker" requires broker designation in signature OR direct CIM/LOI request
+- sophistication_level "experienced" requires use of SDE/EBITDA/multiple/recasting terms
+- extraction_confidence reflects how much was extractable; 0.9+ if most fields present, 0.3 if only name/email
 
-- 0.9+ : Email explicitly names the listing OR includes the BizBuySell listing reference number.
-- 0.7–0.9 : Strong industry + location + price range alignment, but no explicit name reference.
-- 0.5–0.7 : Industry match only, weak other signals.
-- < 0.5 : Likely unmatched. Recommend manual review (set scenario = "unmatched").
-
-## Scenarios
-
-- "new_buyer" : First contact from this email address (previous_interactions_count = 0).
-- "returning_buyer" : previous_interactions_count > 0.
-- "multi_interest" : Email mentions multiple listings or asks about a portfolio.
-- "cobroker_referral" : Lead has a non-null co-broker on the inquiry.
-- "unmatched" : No reasonable match. Confidence MUST be < 0.5.
-
-## Sophistication signals
-
-- "broker" : email signature includes broker designation, mentions deal terms, asks for CIM or LOI directly.
-- "experienced" : uses terms like SDE, EBITDA, multiple, recasting; asks intelligent diligence questions.
-- "novice" : asks "what's the price" or "how much money does it make"; unfamiliar with NDA process.
-- "unknown" : insufficient signal.
-
-## Urgency signals
-
-- "high" : explicit timeline, mentions financing pre-approval, "ready to move quickly," etc.
-- "medium" : engaged but no explicit urgency.
-- "low" : tire-kicker, vague interest.
-
-## Tie-breaking
-
-If two listings score equally well:
-1. Prefer the listing where industry + NAICS exactly matches.
-2. Then prefer the listing where price band is closest to any price the buyer mentioned.
-3. Then prefer the listing where location is closest to anything the buyer mentioned.
-4. If still tied, set scenario = "multi_interest" and pick the higher-asking-price listing.
+Output ONLY the JSON. No preamble. No markdown fencing.
 ```
 
----
+### 2. `lib/router/matcher.ts` (carries from v1)
 
-## Template registry
+Same shape as v1 with one update: matcher receives `ExtractedAttributes` alongside the lead so it can use buyer-stated investment range and industry interest as match signals. Update the system prompt at `prompts/router/match-listing.md`:
 
-Templates are stored in Supabase. They reference Saleshandy step IDs (which are sequence-step bindings). When a template is "picked," the Router enrolls the prospect at that specific step.
+```
+## Use of extracted attributes
 
-### `lib/router/templates.ts`
+If buyer_specific_listing_mentioned is non-null and matches a listing name closely, set confidence ≥ 0.9 and pick that listing.
+
+If buyer_investment_range is non-null, prefer listings whose asking_price falls within or near that range. A buyer saying "$400K-$500K" with a listing asking $475K is a strong match signal.
+
+If buyer_industry_interest is non-null, weight industry-matching listings higher.
+```
+
+The rest of the v1 matcher prompt (confidence rubric, scenarios, sophistication signals, urgency signals, tie-breaking) carries forward unchanged.
+
+### 3. `lib/router/templates.ts` — picker priority
 
 ```typescript
 export async function pickTemplate({
@@ -576,268 +413,468 @@ export async function pickTemplate({
   scenario: string;
   listing_id?: string | null;
   industry?: string | null;
-}) {
+}): Promise<Template> {
   const category = scenarioToCategory(scenario);
 
-  // 1. Industry-specific match
+  // 1. Per-listing override
+  if (listing_id) {
+    const { data } = await supabase
+      .from('templates')
+      .select('*')
+      .eq('category', category)
+      .eq('listing_id', listing_id)
+      .eq('active', true)
+      .maybeSingle();
+    if (data) return data;
+  }
+
+  // 2. Per-industry
   if (industry) {
     const { data } = await supabase
       .from('templates')
       .select('*')
       .eq('category', category)
       .contains('industry_tags', [industry])
+      .is('listing_id', null)
       .eq('active', true)
-      .limit(1)
       .maybeSingle();
     if (data) return data;
   }
 
-  // 2. Generic for this category
-  const { data: generic } = await supabase
+  // 3. Generic fallback
+  const { data } = await supabase
     .from('templates')
     .select('*')
     .eq('category', category)
     .eq('listing_type', 'any')
+    .is('listing_id', null)
     .eq('active', true)
-    .limit(1)
     .maybeSingle();
 
-  if (generic) return generic;
-
-  // 3. Fallback
-  throw new Error(`No template found for scenario=${scenario} industry=${industry}`);
-}
-
-function scenarioToCategory(scenario: string): string {
-  switch (scenario) {
-    case 'new_buyer':
-    case 'returning_buyer':
-    case 'cobroker_referral':
-      return 'initial_response';
-    case 'multi_interest':
-      return 'initial_response';
-    case 'unmatched':
-      return 'unmatched';
-    default:
-      return 'initial_response';
-  }
-}
-
-export async function populateVariables({
-  template,
-  lead,
-  listing_id,
-}: {
-  template: Template;
-  lead: LeadContext;
-  listing_id: string | null;
-}): Promise<Record<string, string>> {
-  const listing = listing_id ? await fetchListing(listing_id) : null;
-
-  return {
-    business_name: listing?.name ?? '[Listing]',
-    asking_price: listing?.asking_price
-      ? `$${listing.asking_price.toLocaleString()}`
-      : 'available upon request',
-    sde: listing?.sde ? `$${listing.sde.toLocaleString()}` : 'N/A',
-    industry: listing?.industry ?? '',
-    location: listing?.location ?? '',
-    buyer_first_name: lead.buyer_first_name ?? 'there',
-    broker_name: 'Mark Mueller',
-    broker_firm: 'CRE Resources, LLC',
-    broker_phone: process.env.BROKER_PHONE ?? '',
-    broker_email: process.env.BROKER_EMAIL ?? '',
-    nda_link: process.env.NDA_LINK ?? '',
-  };
+  if (data) return data;
+  throw new Error(`No template for scenario=${scenario} listing=${listing_id} industry=${industry}`);
 }
 ```
 
-In Saleshandy, templates use `{{variable_name}}` placeholders. These are passed via the `customFields` parameter on the prospect-add API call.
+### 4. `lib/router/renderer.ts` — variable substitution
+
+Use Handlebars (`npm install handlebars`). Mature, safe, supports helpers.
+
+```typescript
+import Handlebars from 'handlebars';
+
+export type RenderContext = {
+  lead: NotionLead;
+  listing: Listing | null;
+  attrs: ExtractedAttributes;
+  calendar_slots: string;
+  env: { broker_name: string; broker_phone: string; broker_email: string; broker_firm: string };
+};
+
+export function renderTemplate(
+  template: Template,
+  ctx: RenderContext
+): { subject: string; html: string; text: string };
+```
+
+Implementation requirements:
+
+- Build a flat variable map from `ctx` covering every variable used in any template
+- Apply per-template fallbacks for missing values (defined in template's `variables` jsonb metadata)
+- HTML-escape user-supplied data in HTML body
+- Preserve formatting in plain-text body
+- Throw descriptive errors if a required variable has no value AND no fallback
+
+Variable naming convention (flat): `buyer_first_name`, `listing_name`, `asking_price`, etc. See `EMAIL-TEMPLATE-001` for the full list used by the generic initial response template.
+
+### 5. `lib/router/sender.ts` — sender interface
+
+```typescript
+export interface Sender {
+  send(params: SendParams): Promise<SendResult>;
+}
+
+export type SendParams = {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+  thread_id?: string;
+  in_reply_to?: string;
+  references?: string;
+  cc?: string[];
+};
+
+export type SendResult = {
+  success: boolean;
+  message_id: string;
+  thread_id: string;
+  provider: 'gmail' | 'saleshandy' | 'mixmax';
+  error?: string;
+};
+```
+
+Non-negotiable: even though only `gmail.ts` ships in v2, all sends go through `sender.send()` so future implementations swap cleanly.
+
+### 6. `lib/router/gmail.ts` — Gmail API implementation
+
+Uses `googleapis` SDK (`npm install googleapis`).
+
+OAuth: extends the existing `cre-resources-claude` Google Cloud project (already set up for Sheets MCP). Add scopes:
+
+```
+https://www.googleapis.com/auth/gmail.send
+https://www.googleapis.com/auth/gmail.readonly
+https://www.googleapis.com/auth/gmail.modify
+https://www.googleapis.com/auth/calendar.readonly
+```
+
+Generate refresh token once via a CLI script; store as `GOOGLE_OAUTH_REFRESH_TOKEN` env var.
+
+Core operations:
+
+```typescript
+import { google } from 'googleapis';
+
+export class GmailSender implements Sender {
+  async send(params: SendParams): Promise<SendResult> {
+    // 1. Build RFC 2822 MIME multipart message (HTML + text alternative)
+    // 2. Add In-Reply-To and References headers if threading
+    // 3. Base64url encode the raw message
+    // 4. POST to gmail.users.messages.send with userId='me' and threadId if provided
+    // 5. Parse threadId and id from response
+    // 6. Return SendResult { success, message_id, thread_id, provider: 'gmail' }
+  }
+
+  async getThread(threadId: string): Promise<Thread>;
+
+  async hasReplyAfter(
+    threadId: string,
+    afterTimestamp: Date,
+    fromMark: string
+  ): Promise<boolean> {
+    // Fetch thread, return true if any message in thread is FROM != fromMark AND date > afterTimestamp
+  }
+
+  async startWatch(): Promise<{ historyId: string; expiration: Date }>;
+
+  async listHistorySince(historyId: string): Promise<HistoryItem[]>;
+}
+```
+
+Gmail API gotchas:
+
+- **Daily send limit:** 2,000/day for Workspace, 500/day free Gmail. Track in `scheduled_sends`; abort cron if approaching.
+- **Pub/Sub watch expires every 7 days.** Renew via daily cron.
+- **Threading requires `In-Reply-To` and `References`** headers using the original message's `Message-ID` (not Gmail's internal `id`). Subject must start with `Re: ` if threading.
+- **Watch requires Pub/Sub topic + push subscription** with auth header pointing at `/api/router/gmail/events`.
+
+### 7. `lib/router/scheduler.ts`
+
+```typescript
+export async function scheduleSequence({
+  lead_id,
+  sequence_id,
+  initial_send_result,
+}: {
+  lead_id: string;
+  sequence_id: string;
+  initial_send_result: SendResult;
+}): Promise<void> {
+  // 1. Fetch sequence_steps for this sequence_id, ordered by step_number
+  // 2. Step 1 already sent — skip
+  // 3. For each remaining step, INSERT scheduled_sends with:
+  //      scheduled_for = now() + delay_days
+  //      gmail_thread_id = initial_send_result.thread_id
+  //      status = 'pending'
+}
+
+export async function cancelPendingForThread(
+  thread_id: string,
+  reason: string
+): Promise<number> {
+  // UPDATE scheduled_sends
+  //   SET status='cancelled', last_error=reason
+  //   WHERE gmail_thread_id = thread_id AND status = 'pending'
+  // Return affected row count.
+}
+```
+
+### 8. `lib/router/calendar.ts`
+
+```typescript
+export async function getAvailableSlots({
+  days_ahead = 5,
+  slot_duration_minutes = 30,
+  business_hours_start = 9,
+  business_hours_end = 17,
+  max_slots = 3,
+}): Promise<string>;
+```
+
+Returns human-readable string like `"Tuesday at 2pm, Wednesday at 10am, or Thursday at 3pm"`. Falls back to `"any time that works for you"` on Calendar API failure.
+
+Uses Google Calendar API freebusy query against Mark's primary calendar.
 
 ---
 
-## Saleshandy client
+## API routes
 
-### `lib/router/saleshandy.ts`
+### `POST /api/router/route` — main inbound
 
-```typescript
-const SH_BASE = 'https://open-api.saleshandy.com/v1';
+**Auth:** Shared secret in `x-router-secret` header.
 
-async function shRequest(path: string, options: RequestInit = {}) {
-  const res = await fetch(`${SH_BASE}${path}`, {
-    ...options,
-    headers: {
-      'x-api-key': process.env.SALESHANDY_API_KEY!,
-      'Content-Type': 'application/json',
-      ...options.headers,
+**Query params:**
+- `dry_run=true` — full flow without sending, scheduling, or updating Notion. Returns the would-be rendered email.
+
+**Body:** `{ "lead_id": "notion-page-id" }`
+
+**Flow:**
+1. Verify auth.
+2. Idempotency check on `match_decisions`.
+3. Fetch lead from Notion (raw email body, sender info).
+4. Call `extractor.extractAttributes()`.
+5. Update Notion lead with extracted attributes.
+6. Fetch active listings.
+7. Call `matcher.matchListing()` with attributes injected.
+8. If confidence < 0.6 → mark `manual_review` and return.
+9. Determine `sequence_id` from `scenario` (look up `sequences.trigger_condition`).
+10. Call `templates.pickTemplate()` for step 1.
+11. Fetch matched listing details (from `listings_cache` or live Notion).
+12. Call `calendar.getAvailableSlots()`.
+13. Build `RenderContext`, call `renderer.renderTemplate()`.
+14. If `dry_run=true` → return rendered email and exit.
+15. Call `gmail.send()`.
+16. Update Notion lead: `router_status='routed'`, `gmail_thread_id`, etc.
+17. INSERT `tracked_threads` row.
+18. Call `scheduler.scheduleSequence()` to queue follow-up steps.
+19. Log to `match_decisions`.
+20. Append to Activity Log Sheet.
+
+### `POST /api/router/cron/process-scheduled`
+
+Runs every 15 minutes via Vercel cron.
+
+**Auth:** Vercel cron secret in `Authorization` header.
+
+**Flow:**
+1. Query `scheduled_sends WHERE status='pending' AND scheduled_for <= NOW()` ordered by `scheduled_for`, limit 50.
+2. For each:
+   a. Check `gmail.hasReplyAfter(thread_id, sequence_step_created_at, broker_email)` → if reply, mark `cancelled` (reason `'reply_received'`) and skip.
+   b. Check `tracked_threads.status` → if not `active`, mark `cancelled` and skip.
+   c. Check daily send count → if > 90% of limit, pause and alert.
+   d. Check `suppressed_emails` → if recipient suppressed, mark `cancelled`.
+   e. Otherwise: re-render template (latest listing data), send via Gmail, update `scheduled_sends.status='sent'`, log Activity.
+   f. On error: increment `send_attempts`, set `last_error`. After 3 attempts, mark `failed`.
+3. Return summary `{ processed, sent, cancelled, failed }`.
+
+### `POST /api/router/cron/renew-gmail-watch`
+
+Daily at 6am. Renews Gmail Pub/Sub watch (expires every 7 days).
+
+### `POST /api/router/gmail/events` — Pub/Sub webhook
+
+**Auth:** Verify Pub/Sub message JWT.
+
+**Flow:**
+1. Decode Pub/Sub message → contains new `historyId`.
+2. Call `gmail.listHistorySince(previous_historyId)` to get changes.
+3. For each new inbound message:
+   a. Look up `tracked_threads` by `thread_id`.
+   b. If found → cancel pending sends, update `tracked_threads`, update Notion engagement, append to Activity Log.
+   c. (v1.1) Optionally classify reply intent via Claude.
+4. Persist new `historyId`.
+
+### `POST /api/router/reroute` — manual override
+
+Cancels existing sequence sends, re-runs match logic with overrides, schedules new sequence. Body: `{ lead_id, force_listing_id?, force_template_id?, force_sequence_id? }`.
+
+### `GET /api/router/health`
+
+Returns 200 with status block per dependency (Anthropic, Notion, Supabase, Gmail).
+
+### Vercel cron config (`vercel.json`)
+
+```json
+{
+  "crons": [
+    {
+      "path": "/api/router/cron/process-scheduled",
+      "schedule": "*/15 * * * *"
     },
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Saleshandy API ${res.status}: ${text}`);
-  }
-  return res.json();
-}
-
-export async function enrollProspect({
-  email,
-  first_name,
-  last_name,
-  sequence_step_id,
-  custom_fields,
-}: {
-  email: string;
-  first_name?: string;
-  last_name?: string;
-  sequence_step_id: string;
-  custom_fields: Record<string, string>;
-}) {
-  const result = await shRequest('/prospects', {
-    method: 'POST',
-    body: JSON.stringify({
-      email,
-      firstName: first_name,
-      lastName: last_name,
-      stepId: sequence_step_id,
-      customFields: custom_fields,
-    }),
-  });
-  return { prospect_id: result.payload.prospect.id };
-}
-
-export async function listSequences() {
-  return shRequest('/sequences');
-}
-
-export async function pauseProspect(prospect_id: string) {
-  return shRequest(`/prospects/${prospect_id}/pause`, { method: 'POST' });
+    {
+      "path": "/api/router/cron/renew-gmail-watch",
+      "schedule": "0 6 * * *"
+    }
+  ]
 }
 ```
-
-NOTE: API endpoint paths above are based on the Saleshandy public docs as of April 2026. Verify exact path and field names against the live API doc at `https://developer.saleshandy.com/api-reference/introduction` and adjust if needed.
 
 ---
 
 ## Environment variables
 
 ```bash
-# .env.local additions
 ANTHROPIC_API_KEY=sk-ant-...
-SALESHANDY_API_KEY=...
+
 NOTION_API_KEY=secret_...
 NOTION_LEADS_DB_ID=...
 NOTION_LISTINGS_DB_ID=...
+
 SUPABASE_URL=https://djbtlhuncpxbxtjbrhsc.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=...
-ROUTER_SECRET=<random_string_for_inbound_webhook_auth>
-SHEETS_PIPELINE_ID=<google_sheet_id>
+
+GOOGLE_OAUTH_CLIENT_ID=...
+GOOGLE_OAUTH_CLIENT_SECRET=...
+GOOGLE_OAUTH_REFRESH_TOKEN=...
+GOOGLE_PUBSUB_TOPIC=projects/cre-resources-claude/topics/gmail-events
+
+ROUTER_SECRET=...
+VERCEL_CRON_SECRET=...
+
+SHEETS_PIPELINE_ID=...
+SHEETS_ACTIVITY_LOG_TAB=Activity Log
+
+BROKER_NAME=Mark Mueller
 BROKER_PHONE=...
 BROKER_EMAIL=mark@creresources.biz
-NDA_LINK=<your_nda_link>
+BROKER_FIRM=CRE Resources, LLC
+
+NDA_LINK_DEFAULT=...
 ```
 
 ---
 
 ## Build order
 
-### Phase 1: Saleshandy migration (Day 1, complete tonight)
-- Saleshandy account set up
-- Gmail / sending domain connected
-- Top 3–5 templates migrated from Gmelius
-- 1–2 active sequences recreated
-- API key generated, stored in env
-- `stepId` for each sequence's first step recorded
+### Phase 1: Google API setup (Day 1, evening)
 
-### Phase 2: Backbone scaffolding (Days 2–3)
-- Create directory structure under `app/api/router/` and `lib/router/`
-- Build the four lib wrappers (saleshandy, notion, supabase, claude)
-- Apply Supabase migration (the four new tables)
-- Health check route working
-- Manually test `enrollProspect` from a script — confirm one test prospect lands in Saleshandy correctly
+- Open `cre-resources-claude` Google Cloud project.
+- Enable Gmail API and Pub/Sub API.
+- Add Gmail + Calendar scopes to existing OAuth consent screen.
+- Generate Mark's Gmail refresh token via one-time CLI script.
+- Create Pub/Sub topic `gmail-events` and a push subscription pointing at `/api/router/gmail/events` with auth.
+- Save credentials to `.env.local`.
 
-### Phase 3: Matcher only, no enrollment (Days 4–5)
-- Build `matchListing` against `match-listing.md`
-- Test against 5–10 real recent leads (read-only mode)
-- Tune the prompt until confidence aligns with judgment
-- This is the riskiest part of the build — spend time here
+### Phase 2: Backbone (Days 2–3)
 
-### Phase 4: Templates + variables (Day 6)
-- Seed `templates` table with 3–5 templates
-- Build `pickTemplate` and `populateVariables`
-- End-to-end test in dry-run mode
+- Create `app/api/router/` and `lib/router/` directory structure.
+- Apply Supabase migration.
+- Build `lib/router/` wrappers (notion, supabase, claude, gmail, calendar).
+- Build renderer with Handlebars.
+- Build a CLI test script: render a template against a sample lead/listing. Iterate on output.
+- Seed `templates` with the EMAIL-TEMPLATE-001 generic initial response.
+
+### Phase 3: Extractor + matcher (Days 4–5)
+
+- Build `extractor.ts` with `extract-attributes.md` prompt.
+- Test against 5 real BBS inquiries (read-only). Verify field extraction matches Mark's judgment.
+- Build `matcher.ts` (from v1) with attribute-aware updates.
+- Test end-to-end: real inquiry → extraction → matching, no sending.
+
+### Phase 4: Sender + dry-run end-to-end (Day 6)
+
+- Build `gmail.send()`.
+- Test sending one email mark@creresources.biz → mark@creresources.biz with a real listing and a personal inquiry.
+- Wire up `/api/router/route` with `dry_run=true` default for first 3 days.
+- Test against 5 real recent leads in dry-run. Review rendered output before any real sends.
 
 ### Phase 5: Live wiring with safety rails (Day 7)
-- `dry_run=true` query param on `/api/router/route`
-- Notion automation: new lead with `router_status = pending` → POST to endpoint
-- Run on 1 lead manually first
-- Verify SH enrollment, Notion update, Activity Log append
-- Allow next 3–5 leads to route automatically with monitoring
 
-### Phase 6: Webhooks + closed loop (Week 2)
-- Saleshandy webhooks → `/api/router/saleshandy/events`
-- Engagement events flow to Notion + Activity Log
-- Reply detection → stage transition logic
-- Manual review queue (Notion view filtered to `router_status = manual_review`)
+- Notion automation: new lead with `router_status='pending'` → POST to `/api/router/route`.
+- First 3 leads: dry-run only. Mark reviews each.
+- After 3 successful dry-runs, flip default to live sending.
+- Manual review queue: Notion view filtered to `router_status='manual_review'`.
 
-### Phase 7: Refinements (Week 3+)
-- `/api/router/reroute` endpoint
-- Per-listing template overrides
-- Co-broker logic (cc Sung Yun on co-brokered leads)
-- Small dashboard showing match quality and sequence performance
+### Phase 6: Sequencing + cron (Week 2)
+
+- Build `scheduler.ts`.
+- Seed `sequences` and `sequence_steps` with starter sequences (Initial → Day 3 → Day 7 → Day 14).
+- Build `/api/router/cron/process-scheduled`.
+- Wire Vercel cron.
+- Run cron in dry-run mode for 24 hours to verify behavior.
+- Flip to live.
+- Add `suppressed_emails` table and pre-send check.
+
+### Phase 7: Reply detection (Week 2–3)
+
+- Set up Pub/Sub watch on Mark's inbox.
+- Build `/api/router/gmail/events` handler.
+- Wire reply detection → cancel pending sends + Notion update + Activity Log.
+- Daily cron renews Pub/Sub watch.
+
+### Phase 8: Refinements (Week 3+)
+
+- Per-listing template overrides (La Guardiola, RE Farm Cafe, Yogi, Philly Pretzel Ewing).
+- Reply intent classifier (Claude classifies as scheduling / question / declining / ghosting).
+- `/api/router/reroute` endpoint.
+- Co-broker logic (cc Sung Yun on co-brokered leads).
+- Dashboard in MainStreetOS UI: pending queue, recent matches, reply rate by template.
 
 ---
 
 ## Non-negotiable safety rails
 
-1. **`dry_run=true` must be the default for all initial testing.** No real emails go out until the matcher and templates are validated against at least 5 real leads.
-2. **Every routing decision is logged to `match_decisions` with full reasoning.** Audit trail is mandatory.
-3. **Buyer email bodies never appear in plaintext logs outside Supabase.** No `console.log`, no error message includes them.
-4. **Idempotency check on `lead_id`.** If a lead has already been routed (status = enrolled), the endpoint returns the existing enrollment without re-enrolling.
-5. **Low-confidence matches (< 0.6) flow to manual review.** They do NOT auto-enroll.
+1. **`dry_run=true` is the default for the first 3 days of live operation.** No real emails until extractor, matcher, and renderer are validated against ≥ 5 real leads.
+2. **Every routing decision logged to `match_decisions`** with full reasoning.
+3. **Buyer email bodies never appear in plaintext logs outside Supabase.** No `console.log`, no error-message inclusion.
+4. **Idempotency check on `lead_id`** before enrolling.
+5. **Low-confidence matches (< 0.6) → manual review.** Never auto-enroll.
+6. **Daily send limit guard.** Cron aborts and alerts at 90% of Gmail daily limit.
+7. **Suppression list enforced before every send.**
+8. **Reply detection MUST cancel pending sends.** Critical to avoid sending "haven't heard from you" after the buyer already replied.
+9. **Sender abstraction (`Sender` interface) is non-negotiable from day one.** Even though only `gmail.ts` ships in v2.
+10. **HTML escaping on all user-supplied data.** Buyer name from extraction goes through escape in renderer.
 
 ---
 
 ## Productization considerations
 
-When MainStreetOS becomes a SaaS product for other brokers:
+When MainStreetOS becomes a SaaS product:
 
-- **Templates table** is per-broker (add `broker_id` foreign key). Each broker has their own template library.
-- **Matcher prompt** could be partially per-broker (broker-specific tone, brokerage name, regional context). For v1, keep it shared.
-- **Saleshandy API key** is per-broker and stored encrypted (use Supabase Vault).
-- **Notion workspace mapping** is per-broker. The Lead Router must be told which Notion workspace to read from.
-- **Pricing tier:** Lead Router as a feature is the differentiator at the $497–$1,497/mo tier.
+- **Templates:** add `broker_id` foreign key. Each broker has their own library.
+- **Per-broker Gmail OAuth:** each broker connects their own Gmail. Refresh tokens encrypted (Supabase Vault).
+- **Per-broker Notion workspace:** broker provides API key + workspace IDs.
+- **Sender choice:** brokers choose Gmail (default) or Saleshandy/Mixmax via the same `Sender` interface.
+- **Sequence library:** ship with starter sequences brokers clone and customize.
+- **Pricing tier:** Lead Router = differentiator at $497–$1,497/mo.
+- **Compliance:** unsubscribe link rendering, suppression list per broker, CAN-SPAM audit before SaaS launch.
 
 ---
 
 ## Known gaps and v1.1 candidates
 
 - HMAC signature verification on inbound webhooks (current: shared secret)
-- Exponential backoff on Saleshandy API failures
-- Rate limiting awareness (Saleshandy has limits — not currently enforced client-side)
-- PII handling review before SaaS launch
-- Test suite (matcher should have golden test cases for confidence scoring)
-- Observability — structured logging + Sentry/Logtail
-- A way for me to "teach" the matcher when it's wrong (feedback loop into match_decisions and prompt tuning)
+- Exponential backoff on Gmail API failures
+- "Teach the matcher" feedback loop (Mark marks a match wrong → tunes prompt)
+- Reply intent classifier
+- Test suite for matcher (golden test cases)
+- Observability — Sentry/Logtail
+- Suppression list management UI
+- Per-listing NDA tokenized links (gated CIM/BVR access, auto-revoke)
+- Mobile-friendly review queue (PWA in MainStreetOS)
 
 ---
 
 ## References
 
-- Saleshandy API: `https://developer.saleshandy.com/api-reference/introduction`
-- Saleshandy webhooks: `https://docs.saleshandy.com/en/collections/9160197-webhooks-new`
-- Anthropic API (TypeScript SDK): `https://docs.claude.com/en/api/client-sdks`
-- Google Sheets MCP (already deployed for this account): `~/.config/claude-mcp/`
+- Gmail API: https://developers.google.com/workspace/gmail/api/reference/rest
+- Gmail Pub/Sub watch: https://developers.google.com/workspace/gmail/api/guides/push
+- Google Calendar API: https://developers.google.com/calendar/api/v3/reference
+- Anthropic API SDK: https://docs.claude.com/en/api/client-sdks
+- Existing Sheets MCP setup: `~/.config/claude-mcp/`
+- v1 spec (superseded): see git history before this commit
 
 ---
 
 ## Glossary
 
 - **BBS** — BizBuySell, primary lead source
-- **CIM** — Confidential Information Memorandum, post-NDA detailed business document
-- **CSRP** — Company-Specific Risk Premium, used in valuation discount rate buildup
+- **CIM** — Confidential Information Memorandum, post-NDA
+- **CSRP** — Company-Specific Risk Premium
 - **DD** — Due Diligence
 - **LOI** — Letter of Intent
-- **NDA** — Non-Disclosure Agreement, gating document for CIM access
-- **OM** — Offering Memorandum, pre-NDA marketing document
+- **NDA** — Non-Disclosure Agreement
+- **OM** — Offering Memorandum, pre-NDA marketing
 - **SDE** — Seller's Discretionary Earnings
-- **SH** — Saleshandy
+- **BVR** — Business Valuation Report
