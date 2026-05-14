@@ -449,12 +449,15 @@ function DocumentRenderer({
       </section>
 
       <section className="doc-section">
-        <h2>Non-Disclosure Agreement</h2>
-        {/* In production: render NDA clauses from templateSource.blocks */}
-        <p className="doc-note">
-          [The full NDA clauses are rendered here from the versioned template source.
-          See architecture document section 4.4 for retention.]
-        </p>
+        <h2>{templateSource?.nda_section?.title ?? 'Non-Disclosure Agreement'}</h2>
+        {templateSource?.nda_section?.preamble && (
+          <p className="doc-paragraph">{templateSource.nda_section.preamble}</p>
+        )}
+        {(templateSource?.nda_section?.clauses ?? []).map((c: { number: number | string; heading: string; text: string }, i: number) => (
+          <p key={i} className="doc-paragraph doc-clause">
+            <strong>§{c.number} {c.heading}.</strong> {c.text}
+          </p>
+        ))}
       </section>
 
       <section className="doc-section doc-broker-signature">
@@ -637,6 +640,9 @@ const styles = `
   .doc-title { font-size: 1.75rem; text-align: center; margin: 2rem 0 1.5rem; letter-spacing: -0.01em; }
   .doc-section h2 { font-size: 1.25rem; margin: 2rem 0 1rem; padding-bottom: 0.25rem; border-bottom: 1px solid var(--rule); }
   .doc-note { color: var(--ink-soft); font-style: italic; padding: 1rem; background: var(--paper-warm); border-left: 3px solid var(--accent); }
+  .doc-paragraph { font-size: 0.9375rem; line-height: 1.6; margin: 0.5rem 0 0.75rem; text-align: justify; }
+  .doc-clause { margin: 0.5rem 0 0.75rem; }
+  .doc-clause strong { font-weight: 600; }
 
   .field-row { margin: 1rem 0; font-family: var(--sans); }
   .field-row label { display: block; font-size: 0.8125rem; color: var(--ink-soft); margin-bottom: 0.25rem; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 500; }
