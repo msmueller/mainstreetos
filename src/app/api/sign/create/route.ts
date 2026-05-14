@@ -269,7 +269,15 @@ function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-/** Read listing properties from Notion and project to prefill field names. */
+/** Read listing properties from Notion LISTINGS and project to prefill field names.
+ *  Property names below MUST match the LISTINGS database schema exactly
+ *  (case-sensitive). Verified against La Guardiola Pizzeria page on 2026-05-14:
+ *  - "Listing Name" is the title property
+ *  - "BBS Listing #" is the BizBuySell listing identifier
+ *  - "Headline" is the marketing tagline
+ *  - "Industry Category" is the broad industry classification
+ *  - "Location" is already pre-combined as "City, State"
+ */
 async function fetchListingPrefill(listingPageId: string): Promise<Record<string, string>> {
   const page: any = await notion.pages.retrieve({ page_id: listingPageId });
   const props = page.properties;
@@ -288,14 +296,12 @@ async function fetchListingPrefill(listingPageId: string): Promise<Record<string
     }
   };
 
-  const city  = get('City');
-  const state = get('State');
   return {
-    business_name:      get('Name'),
-    listing_ref_number: get('Listing Ref'),
-    description:        get('Description'),
-    industry:           get('Industries'),
-    location:           [city, state].filter(Boolean).join(', '),
-    transaction_type:   get('Transaction Type') || 'Business Sale',
+    business_name:      get('Listing Name'),
+    listing_ref_number: get('BBS Listing #'),
+    description:        get('Headline'),
+    industry:           get('Industry Category'),
+    location:           get('Location'),
+    transaction_type:   'Business Sale',
   };
 }

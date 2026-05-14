@@ -81,6 +81,7 @@ export async function syncCompletedSignatureToNotion(
       fieldValues,
       signedPdfUrl,
       auditPdfUrl,
+      completedAt,
     });
 
     await notion.pages.update({
@@ -115,8 +116,9 @@ function buildPropertyPatch(args: {
   fieldValues: Record<string, any>;
   signedPdfUrl: string;
   auditPdfUrl: string;
+  completedAt: string;
 }): Record<string, any> {
-  const { fieldValues: v, signedPdfUrl, auditPdfUrl } = args;
+  const { fieldValues: v, signedPdfUrl, auditPdfUrl, completedAt } = args;
   const patch: Record<string, any> = {};
 
   // 1. Always check the Completed NDA checkbox.
@@ -158,21 +160,37 @@ function buildPropertyPatch(args: {
     patch['Buyer Type'] = { select: { name: mapped } };
   }
 
-  // 5. Buyer Profile (file column) — attach signed PDF + audit certificate.
+  // 5. NDA file column — the signed PDF (the legally binding document).
   //    Notion external-file format: { type:'external', name, external:{url} }.
-  patch['Buyer Profile'] = {
+  patch['NDA'] = {
     files: [
       {
         type: 'external',
         name: `Signed NDA — Envelope ${shortId(signedPdfUrl)}.pdf`,
         external: { url: signedPdfUrl },
       },
+    ],
+  };
+
+  // 6. Buyer Profile file column — audit certificate (the chronological
+  //    event log proving intent, consent, attribution, and integrity).
+  patch['Buyer Profile'] = {
+    files: [
       {
         type: 'external',
         name: `Audit Certificate — Envelope ${shortId(auditPdfUrl)}.pdf`,
         external: { url: auditPdfUrl },
       },
     ],
+  };
+
+  // 7. Date NDA Signed — when the buyer completed signing (ISO 8601 with time).
+  //    Notion date type accepts ISO strings; including time gives sub-day precision
+  //    for audit/dispute purposes.
+  patch['Date NDA Signed'] = {
+    date: {
+      start: completedAt,
+    },
   };
 
   return patch;

@@ -51,13 +51,6 @@ export async function GET(req: NextRequest) {
     .single();
 
   if (error || !signer) {
-    // DEBUG (temporary — remove before going to production)
-    console.error('[sign/load] signer lookup failed', {
-      supabase_url_host: (process.env.SUPABASE_URL ?? '').replace(/^https?:\/\//, '').split('.')[0],
-      token_hash_prefix: tokenHash.slice(0, 16),
-      supabase_error: error ? { code: (error as any).code, message: error.message, details: (error as any).details, hint: (error as any).hint } : null,
-      signer_was_null: !signer,
-    });
     return json({ error: 'invalid or expired signing link' }, 401);
   }
 
