@@ -427,7 +427,14 @@ export async function POST(req: NextRequest) {
       auditPdfUrl:    auditUrl?.signedUrl,
     });
   } catch (err: any) {
-    console.error('[sign/execute] signature recording failed:', err);
+    // DEBUG (temporary): print full stack so we can locate exactly where the
+    // pdfkit/PostgREST/Supabase throw originates. Remove before production.
+    console.error('[sign/execute] signature recording failed', {
+      message: err?.message,
+      name: err?.name,
+      stack: err?.stack,
+      cause: err?.cause,
+    });
     await logEvent({
       envelopeId: envelope.id,
       signerId:   signer.id,

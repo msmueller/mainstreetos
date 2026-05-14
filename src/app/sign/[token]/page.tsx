@@ -193,6 +193,11 @@ export default function SigningPage() {
   // ---- Submit handler ------------------------------------------------------
   const handleSubmit = async () => {
     if (state.phase !== 'ready') return;
+    // Capture the ready-state data BEFORE we transition into 'submitting'.
+    // The 'submitting' phase has no .data field, so without this snapshot the
+    // error-recovery branch below would set state to { phase: 'ready', data: undefined }
+    // and the next render would crash on data.fieldsSchema.
+    const readyData = state.data;
     setSubmitError(null);
     setState({ phase: 'submitting' });
 
@@ -221,7 +226,7 @@ export default function SigningPage() {
       setState({ phase: 'completed', signedPdfUrl: result.signedPdfUrl });
     } catch (err: any) {
       setSubmitError(err.message);
-      setState({ phase: 'ready', data: (state as any).data });
+      setState({ phase: 'ready', data: readyData });
     }
   };
 
