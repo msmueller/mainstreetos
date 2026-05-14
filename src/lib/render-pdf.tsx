@@ -245,7 +245,6 @@ export async function renderSignedPdf(input: RenderSignedPdfInput): Promise<Buff
     />
   );
 
-  // @ts-expect-error — pdf() accepts a Document tree, types are loose
   const stream = await pdf(tree).toBuffer();
   return await streamToBuffer(stream);
 }
@@ -281,7 +280,6 @@ export async function renderAuditCertificate(input: RenderAuditCertInput): Promi
     />
   );
 
-  // @ts-expect-error — same as above
   const stream = await pdf(tree).toBuffer();
   return await streamToBuffer(stream);
 }
@@ -405,7 +403,6 @@ function SignedDocument({
           {drawnSigDataUri && (
             <View style={styles.sigRow}>
               <Text style={styles.sigLabel}>Drawn Signature</Text>
-              {/* @ts-expect-error — Image accepts data URI */}
               <Image src={drawnSigDataUri} style={styles.sigDrawn} />
             </View>
           )}
@@ -434,7 +431,6 @@ function SignedDocument({
           <View style={styles.sigRow}>
             <Text style={styles.sigLabel}>By</Text>
             {brokerSigDataUri
-              // @ts-expect-error — Image accepts data URI
               ? <Image src={brokerSigDataUri} style={styles.sigImage} />
               : <Text style={styles.sigValue}>/s/ {v.broker_name ?? 'Mark S. Mueller'}</Text>}
           </View>
