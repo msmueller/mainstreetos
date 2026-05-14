@@ -223,7 +223,7 @@ export async function POST(req: NextRequest) {
         to:           buyer.email,
         toName:       buyer.name,
         signingUrl,
-        businessName: listingFields.business_name ?? 'a confidential listing',
+        businessName: listingFields.business_name || 'a confidential listing',
         brokerName:   BROKER_DEFAULTS.broker_name,
         envelopeNumber: envelope.envelope_number,
       });

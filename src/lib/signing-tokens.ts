@@ -64,9 +64,13 @@ export function timingSafeEqual(a: string, b: string): boolean {
 // Signing URL construction
 // ----------------------------------------------------------------------------
 
-/** Build the public signing URL the buyer clicks in their email. */
+/** Build the public signing URL the buyer clicks in their email.
+ *  Defensively strips trailing slashes from NEXT_PUBLIC_APP_URL so a misconfigured
+ *  env var (e.g., "https://example.com/") doesn't produce a "//sign/..." double-
+ *  slash URL — that breaks Next.js path matching and the buyer sees an
+ *  "invalid or expired signing link" page. */
 export function buildSigningUrl(rawToken: string): string {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://mainstreetos.biz';
+  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://mainstreetos.biz').replace(/\/+$/, '');
   return `${baseUrl}/sign/${rawToken}`;
 }
 
