@@ -67,7 +67,7 @@ type SigningState =
   | { phase: 'loading' }
   | { phase: 'error'; message: string }
   | { phase: 'ready'; data: EnvelopeData }
-  | { phase: 'submitting' }
+  | { phase: 'submitting'; data: EnvelopeData }
   | { phase: 'completed'; signedPdfUrl: string };
 
 // ============================================================================
@@ -199,7 +199,7 @@ export default function SigningPage() {
     // and the next render would crash on data.fieldsSchema.
     const readyData = state.data;
     setSubmitError(null);
-    setState({ phase: 'submitting' });
+    setState({ phase: 'submitting', data: readyData });
 
     try {
       const res = await fetch('/api/sign/execute', {
@@ -247,7 +247,9 @@ export default function SigningPage() {
   }
 
   const isSubmitting = state.phase === 'submitting';
-  const data: EnvelopeData = state.phase === 'ready' ? state.data : (state as any).data;
+  // Both 'ready' and 'submitting' carry the envelope data — narrow the type properly
+  // so render code can rely on data.* being defined.
+  const data: EnvelopeData = state.data;
 
   // Validation gate for the Sign button
   const buyerFields = data.fieldsSchema.filter((f) => f.role === 'buyer');
