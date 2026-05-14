@@ -41,8 +41,10 @@ export async function GET(req: NextRequest) {
       sign_envelopes!inner (
         id, envelope_number, status, template_id, template_version,
         filled_values, listing_business_name, notion_listing_id,
-        sign_templates!inner ( id, source, source_sha256, fields_schema, disclosure_version_id ),
-        sign_disclosure_versions:disclosure_version_id (id, version_label, disclosure_text, text_sha256)
+        sign_templates!inner (
+          id, source, source_sha256, fields_schema, disclosure_version_id,
+          sign_disclosure_versions ( id, version_label, disclosure_text, text_sha256 )
+        )
       )
     `)
     .eq('token_sha256', tokenHash)
@@ -61,7 +63,9 @@ export async function GET(req: NextRequest) {
 
   const env: any = (signer as any).sign_envelopes;
   const tpl: any = env.sign_templates;
-  const disclosure: any = env.sign_disclosure_versions ?? (await fetchDisclosure(tpl.disclosure_version_id));
+  // Disclosure is embedded under sign_templates (it has the FK), not under sign_envelopes.
+  // Fall back to a direct fetch if the embed returned null for any reason.
+  const disclosure: any = tpl.sign_disclosure_versions ?? (await fetchDisclosure(tpl.disclosure_version_id));
 
   // Token expiry check
   if (signer.token_expires_at && new Date(signer.token_expires_at) < new Date()) {
