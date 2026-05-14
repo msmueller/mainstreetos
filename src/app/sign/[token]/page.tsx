@@ -404,7 +404,13 @@ export default function SigningPage() {
 
 function DocumentRenderer({
   templateSource, filledValues, fieldsSchema, buyerValues, onFieldChange,
-}: any) {
+}: {
+  templateSource: any;                  // JSONB from sign_templates.source — intentionally any
+  filledValues: Record<string, any>;    // merged broker + buyer values — values are dynamic
+  fieldsSchema: FieldSpec[];
+  buyerValues: Record<string, any>;     // matches fieldValues state at line 82
+  onFieldChange: (name: string, value: any) => void;
+}) {
   // In a full implementation this walks templateSource.blocks and renders each
   // block type (header, listing_summary, buyer_profile_section, nda_clauses,
   // signature_block). For brevity here we render a representative structure.
@@ -469,7 +475,11 @@ function DocumentRenderer({
   );
 }
 
-function BuyerField({ field, value, onChange }: any) {
+function BuyerField({ field, value, onChange }: {
+  field: FieldSpec;
+  value: string;
+  onChange: (v: string) => void;
+}) {
   const id = `field-${field.name}`;
   const label = humanize(field.name);
 
