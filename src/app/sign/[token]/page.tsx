@@ -246,8 +246,11 @@ export default function SigningPage() {
 
   // Validation gate for the Sign button
   const buyerFields = data.fieldsSchema.filter((f) => f.role === 'buyer');
+  // Exclude signature-type fields from the requiredMissing list — they're
+  // captured in separate state (typedSignature / drawnSignatureSvg) and have
+  // their own validation gate ("hasTypedSignature"), not the fieldValues map.
   const requiredMissing = buyerFields
-    .filter((f) => f.required && !fieldValues[f.name])
+    .filter((f) => f.required && !f.type.includes('signature') && !fieldValues[f.name])
     .map((f) => f.name);
   const hasTypedSignature = typedSignature.trim().length >= 2;
   const canSign =

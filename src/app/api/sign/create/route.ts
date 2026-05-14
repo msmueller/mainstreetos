@@ -45,8 +45,8 @@ const notion = new NotionClient({ auth: process.env.NOTION_API_KEY! });
 
 const BROKER_DEFAULTS = {
   broker_company:  'CRE Resources, LLC',
-  broker_name:     'Mark S. Mueller',
-  broker_title:    'Managing Member, CAIBVS™',
+  broker_name:     'Mark S. Mueller, CAIBVS™',
+  broker_title:    'Managing Member',
   broker_email:    'markm@creresources.biz',
   broker_phone:    '856.745.9706',
   broker_address:  'Titusville, NJ 08560',
