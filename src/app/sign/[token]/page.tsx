@@ -634,7 +634,7 @@ const styles = `
   .page { flex: 1; max-width: 1400px; margin: 0 auto; padding: 2rem; display: grid; grid-template-columns: 1fr 380px; gap: 2rem; }
   @media (max-width: 900px) { .page { grid-template-columns: 1fr; } }
 
-  .document-panel { background: var(--paper); padding: 3rem; border: 1px solid var(--rule); max-height: calc(100vh - 200px); overflow-y: auto; position: relative; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+  .document-panel { background: var(--paper); padding: 3rem; border: 1px solid var(--rule); max-height: calc(100vh - 120px); overflow-y: auto; position: relative; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
   .document { font-family: var(--serif); line-height: 1.65; color: var(--ink); }
   .doc-letterhead { padding-bottom: 1rem; border-bottom: 1.5px solid var(--ink); margin-bottom: 1.5rem; }
   .doc-broker-line { font-size: 1.05rem; }

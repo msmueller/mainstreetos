@@ -191,9 +191,13 @@ export async function POST(req: NextRequest) {
   }
 
   // ----- Gate 9: Document hash matches re-render ----------------------------
-  // Merge prefilled (broker) values with submitted (buyer) values.
+  // The integrity hash protects the IMMUTABLE document the buyer saw at load time:
+  // the template + broker-prefilled values. The buyer's own submitted values
+  // legitimately change between load and submit, so they are NOT included in the
+  // hash check (they're recorded separately in mergedValues for rendering).
+  // This must match exactly what /api/sign/load computed for `documentSha256`.
   const mergedValues = { ...envelope.filled_values, ...body.fieldValues };
-  const canonicalDocumentForHashing = canonicalizeDocumentInput(template.source, mergedValues);
+  const canonicalDocumentForHashing = canonicalizeDocumentInput(template.source, envelope.filled_values);
   const expectedDocumentHash = sha256Hex(canonicalDocumentForHashing);
 
   if (expectedDocumentHash !== body.documentSha256ShownToSigner) {
