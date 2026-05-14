@@ -437,7 +437,7 @@ function DocumentRenderer({
               key={f.name}
               field={f}
               value={buyerValues[f.name] ?? ''}
-              onChange={(v) => onFieldChange(f.name, v)}
+              onChange={(v: string) => onFieldChange(f.name, v)}
             />
           ))}
       </section>
