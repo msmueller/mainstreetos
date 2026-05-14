@@ -262,10 +262,17 @@ export async function renderAuditCertificate(input: RenderAuditCertInput): Promi
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
+  // Exclude high-frequency keystroke noise from the rendered audit certificate.
+  // field.changed events fire on every keystroke and produce 100s of rows that
+  // (a) crash @react-pdf/renderer's layout engine at scale, and (b) add no audit
+  // value beyond what the structural events already provide. The raw events
+  // remain in sign_events for full forensic queries; only the rendered cert
+  // skips them.
   const { data: events, error } = await supabase
     .from('sign_events')
     .select('id, event_type, occurred_at, ip_address, user_agent, geolocation, document_sha256, disclosure_sha256, payload, event_sha256')
     .eq('envelope_id', input.envelopeId)
+    .neq('event_type', 'field.changed')
     .order('occurred_at', { ascending: true });
 
   if (error) {
