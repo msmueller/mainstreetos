@@ -4,7 +4,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is MainStreetOS
 
-MainStreetOS is an AI-native deal operating system for business brokers. It automates business valuations using a multi-agent pipeline, generates deal documents, manages pipelines, and builds institutional memory via Open Brain semantic search.
+MainStreetOS is an AI-native deal operating system for business brokers and CRE intermediaries. It automates business valuations using a multi-agent pipeline, generates deal documents (OM / CIM / BOV), manages sell-side, buy-side, and advisory pipelines across both BIZ and CRE verticals, and builds institutional memory via Open Brain semantic search.
+
+## Design Invariants
+
+Six load-bearing architectural guardrails. Every migration, schema change, new object, and UI decision is reviewed against these rules. Adopted 2026-04-22 following YC Co-Founder build-out review. Mirrored in the Attio Parity Blueprint (Notion page `3489af0754ec81908f4dfc1e1640b27a`).
+
+1. **A contact is not a deal.** Transaction logic never lives on `contacts`. Opportunity records (`deals`, future `opportunities`) carry deal state.
+2. **A company is not a workflow.** `organizations` records persist; workflow state lives on list entries, not on the company itself.
+3. **A list is not the source of truth; it is the process container.** Records outlive lists. A record in a "Hot Leads" list is still a contact first, a lead entry second.
+4. **A record can live in many processes.** One contact can be a buyer lead, seller client, and consulting client simultaneously — each relationship lives on its own list entry, not by cloning the contact.
+5. **AI sits on top of a strong schema, not in place of one.** Agents are drafters, classifiers, summarizers, and enrichers. They never write authoritative fields without human review via `/dashboard/drafts`.
+6. **CRE and BIZ share a core, not identical stages.** One People/Company/Activity/Task layer; separate pipeline enums, overlay fields, and list configurations for CRE and BIZ work.
+
+Before opening any migration PR, the author must state which invariant(s) the change exercises and how the change respects each one.
 
 ## Commands
 

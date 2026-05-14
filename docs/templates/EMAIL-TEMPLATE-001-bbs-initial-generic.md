@@ -22,6 +22,8 @@
 
 <p>Thank you for your interest in <strong>{{listing_name}}</strong> (Listing #{{listing_number}}).</p>
 
+<p>My name is {{broker_name}} and I am a Business Broker, Intermediary and Advisor and represent the Owner/Seller in this Business Sale.</p>
+
 <p>Based on what you mentioned about {{buyer_timeframe}} and {{buyer_investment_range}}, I think this could be a strong fit. The asking price is {{asking_price}} with SDE of {{sde}}.</p>
 
 <p>I've attached our standard NDA. Once executed, I can send the full CIM with detailed financials.</p>
@@ -55,6 +57,8 @@ CRE Resources, LLC<br>
 Hi {{buyer_first_name}},
 
 Thank you for your interest in {{listing_name}} (Listing #{{listing_number}}).
+
+My name is {{broker_name}} and I am a Business Broker, Intermediary and Advisor and represent the Owner/Seller in this Business Sale.
 
 Based on what you mentioned about {{buyer_timeframe}} and {{buyer_investment_range}}, I think this could be a strong fit. The asking price is {{asking_price}} with SDE of {{sde}}.
 
@@ -109,8 +113,10 @@ CRE Resources, LLC
 | Variable | Source |
 |---|---|
 | `available_slots` | Computed from Google Calendar API (next 5 business hours of availability) |
+| `broker_name` | `process.env.BROKER_NAME` |
 | `broker_phone` | `process.env.BROKER_PHONE` |
 | `broker_email` | `process.env.BROKER_EMAIL` |
+| `broker_firm` | `process.env.BROKER_FIRM` |
 
 ## Conditional rendering notes
 
