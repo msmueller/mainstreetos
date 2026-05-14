@@ -246,8 +246,10 @@ export async function POST(req: NextRequest) {
       envelopeNumber: envelope.envelope_number,
       buyerEmail:     buyer.email,
       // signingUrl is intentionally NOT returned in production —
-      // include only for testing if you also need to display it
-      signingUrl: process.env.NODE_ENV === 'production' ? undefined : signingUrl,
+      // include only for testing in Preview / local dev (Vercel sets
+      // NODE_ENV='production' even on Preview, so we key off VERCEL_ENV
+      // which distinguishes 'production' | 'preview' | 'development').
+      signingUrl: process.env.VERCEL_ENV === 'production' ? undefined : signingUrl,
     });
   } catch (err: any) {
     console.error('[sign/create] unhandled error:', err);
