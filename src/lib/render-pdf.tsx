@@ -124,37 +124,37 @@ const COLORS = {
 function makeStyles(body: string) {
   return StyleSheet.create({
     page: {
-      paddingTop: 56,
-      paddingBottom: 70,
+      paddingTop: 24,
+      paddingBottom: 40,
       paddingHorizontal: 56,
       fontFamily: body,
       fontSize: 10.5,
       lineHeight: 1.45,
       color: COLORS.ink,
     },
-    letterhead: { borderBottomWidth: 1.5, borderBottomColor: COLORS.ink, paddingBottom: 6, marginBottom: 10 },
+    letterhead: { borderBottomWidth: 1.5, borderBottomColor: COLORS.ink, paddingBottom: 3, marginBottom: 4 },
     letterheadRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-    letterheadCenter: { flex: 1 },
-    letterheadLogo: { width: 50, height: 44, objectFit: 'contain' },
-    poweredByLogo: { width: 120, height: 32, objectFit: 'contain' },
-    letterheadCompany: { fontSize: 12, fontWeight: 'bold' },
+    letterheadCenter: { flex: 1, justifyContent: 'center' },
+    letterheadLogo: { width: 60, height: 60, objectFit: 'contain' },
+    poweredByLogo: { width: 110, height: 36, objectFit: 'contain' },
+    letterheadCompany: { fontSize: 12, fontWeight: 'bold', textAlign: 'center' },
     // Credential text (", CAIBVS™") rendered 2pt smaller than its parent
     // (12pt → 10pt in letterhead, 10pt → 8pt in signature block).
     credentialSmallLg: { fontSize: 10 },
     credentialSmallSm: { fontSize: 8 },
-    letterheadMeta: { fontSize: 8.5, color: COLORS.inkSoft, marginTop: 2 },
+    letterheadMeta: { fontSize: 8.5, color: COLORS.inkSoft, textAlign: 'center', marginTop: 0 },
     letterheadLink: { fontSize: 8.5, color: COLORS.inkSoft, textDecoration: 'none' },
     listingStrip: {
       flexDirection: 'row', flexWrap: 'wrap', gap: 10,
       borderBottomWidth: 0.5, borderBottomColor: COLORS.rule,
-      paddingBottom: 6, marginBottom: 12,
+      paddingBottom: 3, marginBottom: 4,
     },
-    listingItem: { fontSize: 9, marginRight: 12, marginBottom: 2 },
+    listingItem: { fontSize: 9, marginRight: 12, marginBottom: 1 },
     listingLabel: { fontWeight: 'bold' },
-    title: { fontSize: 16, textAlign: 'center', marginVertical: 14, fontWeight: 'bold' },
-    sectionTitle: { fontSize: 12, fontWeight: 'bold', marginTop: 12, marginBottom: 6, borderBottomWidth: 0.5, borderBottomColor: COLORS.rule, paddingBottom: 2 },
-    sectionIntro: { fontSize: 10, color: COLORS.inkSoft, marginBottom: 6 },
-    fieldRow: { flexDirection: 'row', marginBottom: 3 },
+    title: { fontSize: 16, textAlign: 'center', marginTop: 4, marginBottom: 6, fontWeight: 'bold' },
+    sectionTitle: { fontSize: 12, fontWeight: 'bold', marginTop: 6, marginBottom: 3, borderBottomWidth: 0.5, borderBottomColor: COLORS.rule, paddingBottom: 2 },
+    sectionIntro: { fontSize: 10, color: COLORS.inkSoft, marginBottom: 3 },
+    fieldRow: { flexDirection: 'row', marginBottom: 2 },
     fieldLabel: { width: 200, fontWeight: 'bold', fontSize: 9.5, color: COLORS.inkSoft },
     fieldValue: { flex: 1, fontSize: 10 },
     paragraph: { marginBottom: 6, textAlign: 'justify' },
@@ -367,7 +367,8 @@ function SignedDocument({
                 {lh?.broker_role_line ?? 'Business Broker & Intermediary'}
                 {' · '}
                 {lh?.broker_address ?? 'Titusville, NJ 08560'}
-                {' · '}
+              </Text>
+              <Text style={styles.letterheadMeta}>
                 {lh?.broker_phone ?? ''}
                 {' · '}
                 {lh?.broker_email ?? ''}
