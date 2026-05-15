@@ -245,11 +245,12 @@ export async function POST(req: NextRequest) {
       envelopeId:     envelope.id,
       envelopeNumber: envelope.envelope_number,
       buyerEmail:     buyer.email,
-      // signingUrl is intentionally NOT returned in production —
-      // include only for testing in Preview / local dev (Vercel sets
-      // NODE_ENV='production' even on Preview, so we key off VERCEL_ENV
-      // which distinguishes 'production' | 'preview' | 'development').
-      signingUrl: process.env.VERCEL_ENV === 'production' ? undefined : signingUrl,
+      // signingUrl is ALWAYS returned to the caller. The buyer also gets it via
+      // the auto-email (sendSigningInvitation), but the broker may want to
+      // compose a personal email and paste the link in manually. Returning it
+      // here is safe because /api/sign/create is service-role-scoped — anyone
+      // who can hit this endpoint already has full broker authority.
+      signingUrl,
     });
   } catch (err: any) {
     console.error('[sign/create] unhandled error:', err);
