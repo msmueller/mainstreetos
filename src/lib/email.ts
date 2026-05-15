@@ -275,7 +275,7 @@ function layout(args: {
           <!-- Footer -->
           <tr>
             <td style="padding:16px 32px 24px 32px;border-top:1px solid ${RULE};font-family:Arial,Helvetica,sans-serif;font-size:11px;color:${INK_SOFT};letter-spacing:0.04em;line-height:1.5;">
-              <strong>Mark Mueller, CAIBVS™</strong>&nbsp;·&nbsp;Managing Member<br/>
+              <strong>Mark Mueller</strong>&nbsp;·&nbsp;Managing Member<br/>
               CRE Resources, LLC&nbsp;·&nbsp;Titusville, NJ 08560<br/>
               <a href="mailto:markm@creresources.biz" style="color:${INK_SOFT};text-decoration:none;">markm@creresources.biz</a>
               &nbsp;·&nbsp;856.745.9706

@@ -224,7 +224,10 @@ export async function POST(req: NextRequest) {
         toName:       buyer.name,
         signingUrl,
         businessName: listingFields.business_name || 'a confidential listing',
-        brokerName:   BROKER_DEFAULTS.broker_name,
+        // Email signature uses the simple form ("Mark Mueller") for warmth;
+        // the PDF and legal record still use the full BROKER_DEFAULTS.broker_name
+        // ("Mark S. Mueller, CAIBVS™") for formality.
+        brokerName:   'Mark Mueller',
         envelopeNumber: envelope.envelope_number,
       });
     } catch (emailErr: any) {
