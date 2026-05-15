@@ -132,7 +132,6 @@ export async function POST(req: NextRequest) {
     // own buyer email — the Router will embed the link in its templated Email #1
     // so the buyer gets one cohesive message from us.
     let nda_signing_url: string | null = null;
-    let nda_envelope_number: number | null = null;
     if (!dryRun && enriched.notion_page_id) {
       try {
         const ndaBaseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://www.mainstreetos.biz';
@@ -154,7 +153,6 @@ export async function POST(req: NextRequest) {
         if (ndaRes.ok) {
           const ndaData = await ndaRes.json();
           nda_signing_url = ndaData.signingUrl ?? null;
-          nda_envelope_number = ndaData.envelopeNumber ?? null;
           // Override the enriched listing's static nda_link with the
           // per-envelope, per-buyer signing URL so the existing {{nda_link}}
           // template placeholder picks up the dynamic URL automatically.
@@ -180,8 +178,6 @@ export async function POST(req: NextRequest) {
         listing: enriched,
         attrs,
         available_slots,
-        nda_signing_url,
-        nda_envelope_number,
         broker: {
           name: process.env.BROKER_NAME ?? 'Mark Mueller',
           phone: process.env.BROKER_PHONE ?? '',
