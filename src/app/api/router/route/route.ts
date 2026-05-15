@@ -126,6 +126,51 @@ export async function POST(req: NextRequest) {
     // Calendar availability
     const available_slots = await getAvailableSlots();
 
+    // Mint click-wrap NDA envelope (graceful: failure does NOT block Email #1).
+    // The Router calls /api/sign/create with suppressAutoEmail=true; click-wrap
+    // creates the envelope, returns a unique signingUrl, and SKIPS sending its
+    // own buyer email — the Router will embed the link in its templated Email #1
+    // so the buyer gets one cohesive message from us.
+    let nda_signing_url: string | null = null;
+    let nda_envelope_number: number | null = null;
+    if (!dryRun && enriched.notion_page_id) {
+      try {
+        const ndaBaseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://www.mainstreetos.biz';
+        const ndaRes = await fetch(`${ndaBaseUrl}/api/sign/create`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            templateKey: 'NDA_BuyerProfile',
+            notionLeadId: notion_lead_page_id,
+            notionListingId: enriched.notion_page_id,
+            buyer: {
+              email: lead.buyer_email,
+              name: [lead.buyer_first_name, lead.buyer_last_name].filter(Boolean).join(' ') || undefined,
+              phone: lead.buyer_phone ?? undefined,
+            },
+            suppressAutoEmail: true,
+          }),
+        });
+        if (ndaRes.ok) {
+          const ndaData = await ndaRes.json();
+          nda_signing_url = ndaData.signingUrl ?? null;
+          nda_envelope_number = ndaData.envelopeNumber ?? null;
+          // Override the enriched listing's static nda_link with the
+          // per-envelope, per-buyer signing URL so the existing {{nda_link}}
+          // template placeholder picks up the dynamic URL automatically.
+          if (nda_signing_url) {
+            (enriched as { nda_link: string | null }).nda_link = nda_signing_url;
+          }
+        } else {
+          console.error('[router/route] click-wrap create returned non-OK:', ndaRes.status, await ndaRes.text().catch(() => ''));
+        }
+      } catch (ndaErr: any) {
+        // Graceful degradation: log and proceed. Email #1 will send without
+        // the NDA link, and Mark can manually mint a follow-up NDA later.
+        console.error('[router/route] click-wrap create errored:', ndaErr?.message ?? ndaErr);
+      }
+    }
+
     // Render
     const rendered = renderEmail({
       subject_template: picked.subject_template,
@@ -135,13 +180,17 @@ export async function POST(req: NextRequest) {
         listing: enriched,
         attrs,
         available_slots,
+        nda_signing_url,
+        nda_envelope_number,
         broker: {
           name: process.env.BROKER_NAME ?? 'Mark Mueller',
           phone: process.env.BROKER_PHONE ?? '',
           email: process.env.BROKER_EMAIL ?? 'markm@creresources.biz',
           firm: process.env.BROKER_FIRM ?? 'CRE Resources, LLC',
           buyer_profile_link: process.env.BUYER_PROFILE_LINK,
-          generic_nda_link: process.env.GENERIC_NDA_LINK,
+          // When a per-envelope NDA was successfully minted, override the
+          // env-var fallback "generic" NDA link with the per-buyer signing URL.
+          generic_nda_link: nda_signing_url ?? process.env.GENERIC_NDA_LINK,
           buyer_acquisition_process: process.env.BUYER_ACQUISITION_PROCESS_LINK,
         },
       },

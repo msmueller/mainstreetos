@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
     return json({ error: 'invalid json' }, 400);
   }
 
-  const { templateKey, notionLeadId, notionListingId, buyer } = body;
+  const { templateKey, notionLeadId, notionListingId, buyer, suppressAutoEmail } = body;
 
   if (!templateKey || !buyer?.email) {
     return json({ error: 'templateKey and buyer.email are required' }, 400);
@@ -217,8 +217,14 @@ export async function POST(req: NextRequest) {
     ]);
 
     // ----- 8. Email buyer the signing link --------------------------------
+    // Callers can set `suppressAutoEmail: true` (e.g. the Lead Router) to
+    // skip this step — the caller is responsible for delivering the signingUrl
+    // to the buyer some other way.
     const signingUrl = buildSigningUrl(buyerToken.raw);
     try {
+      if (suppressAutoEmail) {
+        // Skip auto-email; the caller embeds the signingUrl into its own email.
+      } else {
       await sendSigningInvitation({
         to:           buyer.email,
         toName:       buyer.name,
@@ -230,6 +236,7 @@ export async function POST(req: NextRequest) {
         brokerName:   'Mark Mueller',
         envelopeNumber: envelope.envelope_number,
       });
+      }
     } catch (emailErr: any) {
       // Email failure doesn't void the envelope — broker can resend manually
       console.error('[sign/create] email send failed:', emailErr.message);
