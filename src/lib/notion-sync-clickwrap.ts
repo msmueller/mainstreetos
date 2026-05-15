@@ -44,20 +44,6 @@ export type SyncCompletedSignatureInput = {
 };
 
 // ============================================================================
-// Buyer Type mapping  (C1 — confirmed by Mark)
-// ============================================================================
-//
-// NDA option (what the buyer picked)  →  Notion Buyer Type option
-//
-const BUYER_TYPE_MAP: Record<string, string> = {
-  'Corporate Business Buyer':  'Corporate Acquisition',
-  'Private Entrepreneur':      'Owner/Operator',
-  'Partnership Investment':    'Investor',
-  'Private Equity Investor':   'Investor',
-  'Employee Acquisition':      'Employee Acquisition',
-};
-
-// ============================================================================
 // Main export
 // ============================================================================
 
@@ -149,8 +135,17 @@ function buildPropertyPatch(args: {
   if (text(v.credit_net_worth)) {
     patch['Credit Score'] = richText(v.credit_net_worth);
   }
-  if (text(v.funding_source)) {
-    patch['Funding Source'] = richText(v.funding_source);
+  if (text(v.primary_funding_source)) {
+    patch['Primary Funding Source'] = richText(v.primary_funding_source);
+  }
+  if (text(v.describe_acquisition_funding)) {
+    patch['Describe Acquisition Funding'] = richText(v.describe_acquisition_funding);
+  }
+  if (text(v.buyer_acquisition_type)) {
+    patch['Acquisition Type'] = { select: { name: text(v.buyer_acquisition_type) } };
+  }
+  if (text(v.buyer_deal_structure)) {
+    patch['Deal Structure'] = { select: { name: text(v.buyer_deal_structure) } };
   }
 
   // 3. Numeric (currency) — funds_available may include $/, commas etc.
@@ -186,11 +181,10 @@ function buildPropertyPatch(args: {
     patch['US Citizen'] = richText(v.buyer_us_citizen);
   }
 
-  // 4. Buyer Type — apply the C1 mapping.
-  const ndaBuyerType = String(v.buyer_type ?? '').trim();
-  const mapped = BUYER_TYPE_MAP[ndaBuyerType];
-  if (mapped) {
-    patch['Buyer Type'] = { select: { name: mapped } };
+  // 4. Buyer Type — pass through directly. Form Select options match the
+  //    Notion Buyer Type Select column options 1:1 (no translation needed).
+  if (text(v.buyer_type)) {
+    patch['Buyer Type'] = { select: { name: text(v.buyer_type) } };
   }
 
   // 5. NDA file column — the signed PDF (the legally binding document).
