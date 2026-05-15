@@ -276,13 +276,21 @@ export default function SigningPage() {
       <header className="masthead">
         <div className="masthead-inner">
           <div className="brand">
-            <div className="brand-mark">CRE</div>
+            <img src="/logos/cre-logo.png" alt="CRE Resources" className="brand-logo" />
             <div className="brand-text">
-              <div className="brand-name">CRE Resources, LLC</div>
-              <div className="brand-tag">Business Broker · M&A Advisor</div>
+              <div className="brand-name">
+                CRE Resources, LLC — Mark S. Mueller<span className="brand-credential">, CAIBVS™</span>
+              </div>
+              <div className="brand-tag">
+                Business Broker · M&amp;A Advisor · {' '}
+                <a href="https://creresources.biz" target="_blank" rel="noopener noreferrer" className="brand-link">creresources.biz</a>
+              </div>
             </div>
           </div>
-          <div className="envelope-id">No. {data.envelopeNumber}</div>
+          <div className="brand-right">
+            <img src="/logos/powered-by-mainstreetos.png" alt="Powered by MainStreetOS" className="powered-by-logo" />
+            <div className="envelope-id">No. {data.envelopeNumber}</div>
+          </div>
         </div>
       </header>
 
@@ -656,6 +664,14 @@ const styles = `
   .masthead-inner { max-width: 1400px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; }
   .brand { display: flex; align-items: center; gap: 0.75rem; }
   .brand-mark { width: 2.5rem; height: 2.5rem; border: 1.5px solid var(--paper); display: flex; align-items: center; justify-content: center; font-family: var(--serif); font-weight: 600; letter-spacing: 0.05em; font-size: 0.85rem; }
+  .brand { display: flex; align-items: center; gap: 0.75rem; }
+  .brand-logo { width: 3rem; height: 3rem; object-fit: contain; background: var(--paper); padding: 0.25rem; border-radius: 2px; }
+  .brand-text { display: flex; flex-direction: column; gap: 0.125rem; }
+  .brand-credential { font-size: 0.78em; opacity: 0.85; }
+  .brand-link { color: var(--paper); text-decoration: underline; opacity: 0.85; }
+  .brand-link:hover { opacity: 1; }
+  .brand-right { display: flex; align-items: center; gap: 1rem; }
+  .powered-by-logo { height: 2.25rem; width: auto; max-width: 8rem; object-fit: contain; background: var(--paper); padding: 0.25rem 0.5rem; border-radius: 2px; }
   .brand-name { font-family: var(--serif); font-size: 1.05rem; }
   .brand-tag { font-size: 0.75rem; opacity: 0.75; letter-spacing: 0.05em; text-transform: uppercase; }
   .envelope-id { font-family: var(--serif); font-size: 0.875rem; opacity: 0.85; }

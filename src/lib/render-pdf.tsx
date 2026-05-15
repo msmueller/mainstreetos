@@ -133,8 +133,17 @@ function makeStyles(body: string) {
       color: COLORS.ink,
     },
     letterhead: { borderBottomWidth: 1.5, borderBottomColor: COLORS.ink, paddingBottom: 6, marginBottom: 10 },
+    letterheadRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    letterheadCenter: { flex: 1 },
+    letterheadLogo: { width: 50, height: 44, objectFit: 'contain' },
+    poweredByLogo: { width: 120, height: 32, objectFit: 'contain' },
     letterheadCompany: { fontSize: 12, fontWeight: 'bold' },
+    // Credential text (", CAIBVS™") rendered 2pt smaller than its parent
+    // (12pt → 10pt in letterhead, 10pt → 8pt in signature block).
+    credentialSmallLg: { fontSize: 10 },
+    credentialSmallSm: { fontSize: 8 },
     letterheadMeta: { fontSize: 8.5, color: COLORS.inkSoft, marginTop: 2 },
+    letterheadLink: { fontSize: 8.5, color: COLORS.inkSoft, textDecoration: 'none' },
     listingStrip: {
       flexDirection: 'row', flexWrap: 'wrap', gap: 10,
       borderBottomWidth: 0.5, borderBottomColor: COLORS.rule,
@@ -165,8 +174,8 @@ function makeStyles(body: string) {
       borderTopWidth: 0.5, borderTopColor: COLORS.rule, paddingTop: 6,
     },
     pageNumber: {
-      position: 'absolute', bottom: 12, left: 0, right: 0,
-      textAlign: 'center', fontSize: 8, color: COLORS.inkSoft,
+      position: 'absolute', bottom: 12, left: 0, right: 56,
+      textAlign: 'right', fontSize: 8, color: COLORS.inkSoft,
     },
     // Audit certificate styles
     acHeader: { marginBottom: 12, borderBottomWidth: 1, borderBottomColor: COLORS.ink, paddingBottom: 6 },
@@ -230,6 +239,12 @@ export async function renderSignedPdf(input: RenderSignedPdfInput): Promise<Buff
     (await fetchToDataUri(process.env.BROKER_SIGNATURE_URL ?? '')) ??
     (await readLocalToDataUri('public/signatures/mark-signature.png'));
 
+  // Letterhead branding logos: CRE Resources mark on the left, "Powered by
+  // MainStreetOS" mark on the right. Both expected to live in
+  // /public/logos/ in the MSO repo.
+  const creLogoDataUri        = await readLocalToDataUri('public/logos/cre-logo.png');
+  const poweredByLogoDataUri  = await readLocalToDataUri('public/logos/powered-by-mainstreetos.png');
+
   // Convert drawn-signature SVG (if present) into a data URI for Image.
   // @react-pdf/renderer's <Image> accepts data:image/svg+xml URIs directly.
   const drawnSigDataUri = input.buyerDrawnSignatureSvg
@@ -242,6 +257,8 @@ export async function renderSignedPdf(input: RenderSignedPdfInput): Promise<Buff
       styles={styles}
       brokerSigDataUri={brokerSigDataUri}
       drawnSigDataUri={drawnSigDataUri}
+      creLogoDataUri={creLogoDataUri}
+      poweredByLogoDataUri={poweredByLogoDataUri}
     />
   );
 
@@ -309,12 +326,14 @@ async function streamToBuffer(stream: any): Promise<Buffer> {
 // ============================================================================
 
 function SignedDocument({
-  input, styles, brokerSigDataUri, drawnSigDataUri,
+  input, styles, brokerSigDataUri, drawnSigDataUri, creLogoDataUri, poweredByLogoDataUri,
 }: {
   input: RenderSignedPdfInput;
   styles: any;
   brokerSigDataUri?: string;
   drawnSigDataUri?: string;
+  creLogoDataUri?: string;
+  poweredByLogoDataUri?: string;
 }) {
   const t = input.template;
   const v = input.filledValues;
@@ -332,20 +351,34 @@ function SignedDocument({
       producer="MainStreetOS"
     >
       <Page size="LETTER" style={styles.page}>
-        {/* Letterhead */}
+        {/* Letterhead — three columns: CRE logo, broker info, Powered by MainStreetOS logo.
+            Logos sized to fit within the height of the 2-line text block. */}
         <View style={styles.letterhead}>
-          <Text style={styles.letterheadCompany}>
-            {lh?.broker_company ?? 'CRE Resources, LLC'} — {lh?.broker_principal ?? 'Mark Mueller, CAIBVS™'}
-          </Text>
-          <Text style={styles.letterheadMeta}>
-            {lh?.broker_role_line ?? 'Business Broker & Intermediary'}
-            {' · '}
-            {lh?.broker_address ?? 'Titusville, NJ 08560'}
-            {' · '}
-            {lh?.broker_phone ?? ''}
-            {' · '}
-            {lh?.broker_email ?? ''}
-          </Text>
+          <View style={styles.letterheadRow}>
+            {creLogoDataUri && (
+              <Image src={creLogoDataUri} style={styles.letterheadLogo} />
+            )}
+            <View style={styles.letterheadCenter}>
+              <Text style={styles.letterheadCompany}>
+                {lh?.broker_company ?? 'CRE Resources, LLC'} — {splitCredential(lh?.broker_principal ?? 'Mark S. Mueller, CAIBVS™').name}
+                <Text style={styles.credentialSmallLg}>{splitCredential(lh?.broker_principal ?? 'Mark S. Mueller, CAIBVS™').credential}</Text>
+              </Text>
+              <Text style={styles.letterheadMeta}>
+                {lh?.broker_role_line ?? 'Business Broker & Intermediary'}
+                {' · '}
+                {lh?.broker_address ?? 'Titusville, NJ 08560'}
+                {' · '}
+                {lh?.broker_phone ?? ''}
+                {' · '}
+                {lh?.broker_email ?? ''}
+                {' · '}
+                <Link src="https://creresources.biz" style={styles.letterheadLink}>creresources.biz</Link>
+              </Text>
+            </View>
+            {poweredByLogoDataUri && (
+              <Image src={poweredByLogoDataUri} style={styles.poweredByLogo} />
+            )}
+          </View>
         </View>
 
         {/* Listing strip */}
@@ -384,15 +417,19 @@ function SignedDocument({
           );
         })}
 
-        {/* NDA section */}
-        <Text style={styles.sectionTitle}>{ndaSection?.title ?? 'Non-Disclosure Agreement'}</Text>
-        {ndaSection?.preamble && <Text style={styles.paragraph}>{ndaSection.preamble}</Text>}
-        {(ndaSection?.clauses ?? []).map((c: any, i: number) => (
-          <Text key={i} style={styles.paragraph}>
-            <Text style={styles.clauseHead}>§{c.number} {c.heading}.</Text>{' '}
-            {c.text}
-          </Text>
-        ))}
+        {/* NDA section — force start on a new page so page 1 stays focused on
+            the Buyer Profile. The `break` prop on a View instructs
+            @react-pdf/renderer to begin this element on the next page. */}
+        <View break>
+          <Text style={styles.sectionTitle}>{ndaSection?.title ?? 'Non-Disclosure Agreement'}</Text>
+          {ndaSection?.preamble && <Text style={styles.paragraph}>{ndaSection.preamble}</Text>}
+          {(ndaSection?.clauses ?? []).map((c: any, i: number) => (
+            <Text key={i} style={styles.paragraph}>
+              <Text style={styles.clauseHead}>§{c.number} {c.heading}.</Text>{' '}
+              {c.text}
+            </Text>
+          ))}
+        </View>
 
         {/* Signature block */}
         <View style={styles.sigBlock} wrap={false}>
@@ -443,7 +480,10 @@ function SignedDocument({
           </View>
           <View style={styles.sigRow}>
             <Text style={styles.sigLabel}>Name</Text>
-            <Text style={styles.sigValue}>{v.broker_name ?? 'Mark S. Mueller'}</Text>
+            <Text style={styles.sigValue}>
+              {splitCredential(v.broker_name ?? 'Mark S. Mueller, CAIBVS™').name}
+              <Text style={styles.credentialSmallSm}>{splitCredential(v.broker_name ?? 'Mark S. Mueller, CAIBVS™').credential}</Text>
+            </Text>
           </View>
           <View style={styles.sigRow}>
             <Text style={styles.sigLabel}>Title</Text>
@@ -480,7 +520,7 @@ function SignedDocument({
         <Text
           fixed
           style={styles.pageNumber}
-          render={({ pageNumber, totalPages }: any) => `Page ${pageNumber} of ${totalPages}`}
+          render={({ pageNumber }: any) => `Page - ${pageNumber}`}
         />
       </Page>
     </Document>
@@ -668,4 +708,13 @@ function formatIsoCompact(s: string): string {
 
 function shorten(s: string, len: number): string {
   return s.length <= len ? s : s.slice(0, len - 1) + '…';
+}
+
+/** Split a "Full Name, CREDENTIAL" string into name and credential parts so
+ *  the credential can be rendered at a smaller font size. If no comma is
+ *  present, the whole string is returned as the name with an empty credential. */
+function splitCredential(s: string): { name: string; credential: string } {
+  const idx = s.indexOf(',');
+  if (idx === -1) return { name: s, credential: '' };
+  return { name: s.slice(0, idx), credential: s.slice(idx) };
 }
