@@ -126,7 +126,7 @@ function buildPropertyPatch(args: {
 
   // 2. Direct text-style fields — only set when the buyer provided a value.
   if (text(v.buyer_address)) {
-    patch['BP Full Address'] = richText(v.buyer_address);
+    patch['Full Address'] = richText(v.buyer_address);
   }
   if (text(v.buyer_phone)) {
     patch['Phone'] = { phone_number: String(v.buyer_phone).trim() };
@@ -134,23 +134,56 @@ function buildPropertyPatch(args: {
   if (text(v.buyer_email)) {
     patch['Email'] = { email: String(v.buyer_email).trim().toLowerCase() };
   }
-  if (text(v.buyer_entity) || text(v.buyer_company)) {
-    patch['Company'] = richText(text(v.buyer_entity) ? v.buyer_entity : v.buyer_company);
+  if (text(v.buyer_entity)) {
+    patch['Buyer Entity'] = richText(v.buyer_entity);
+  }
+  if (text(v.buyer_company)) {
+    patch['Buyer Company'] = richText(v.buyer_company);
   }
   if (text(v.business_experience)) {
-    patch['BP Additional Comments'] = richText(v.business_experience);
+    patch['Business Experience'] = richText(v.business_experience);
+  }
+  if (text(v.buyer_comments)) {
+    patch['Buyer Comment'] = richText(v.buyer_comments);
   }
   if (text(v.credit_net_worth)) {
-    patch['BP Credit Score'] = richText(v.credit_net_worth);
+    patch['Credit Score'] = richText(v.credit_net_worth);
   }
   if (text(v.funding_source)) {
-    patch['BP Plan to Finance'] = richText(v.funding_source);
+    patch['Funding Source'] = richText(v.funding_source);
   }
 
   // 3. Numeric (currency) — funds_available may include $/, commas etc.
   const fundsNumber = parseCurrency(v.funds_available);
   if (fundsNumber !== null) {
-    patch['BP Liquid Cash'] = { number: fundsNumber };
+    patch['Liquid Cash'] = { number: fundsNumber };
+  }
+
+  // 3a. New fields (v2 template): 5 text/currency/select + 2 checkboxes.
+  if (text(v.buyer_business_partner)) {
+    patch['Business Partner'] = richText(v.buyer_business_partner);
+  }
+  if (text(v.buyer_timeframe_to_purchase)) {
+    patch['Timeframe to Purchase'] = richText(v.buyer_timeframe_to_purchase);
+  }
+  const currentIncomeNumber = parseCurrency(v.buyer_current_income);
+  if (currentIncomeNumber !== null) {
+    patch['Current Income'] = { number: currentIncomeNumber };
+  }
+  if (text(v.buyer_financing_type)) {
+    patch['Financing Type'] = { select: { name: text(v.buyer_financing_type) } };
+  }
+  if (text(v.buyer_foreign_buyer)) {
+    patch['Foreign Buyer'] = { select: { name: text(v.buyer_foreign_buyer) } };
+  }
+  // Checkboxes — write '__YES__' or '__NO__' as rich_text to match the existing
+  // LEADS convention. If buyer touched the field at all the value will be one of
+  // those two strings; an untouched checkbox stays empty and we skip writing it.
+  if (v.buyer_consider_franchise === '__YES__' || v.buyer_consider_franchise === '__NO__') {
+    patch['Consider Franchise'] = richText(v.buyer_consider_franchise);
+  }
+  if (v.buyer_us_citizen === '__YES__' || v.buyer_us_citizen === '__NO__') {
+    patch['US Citizen'] = richText(v.buyer_us_citizen);
   }
 
   // 4. Buyer Type — apply the C1 mapping.

@@ -34,6 +34,8 @@ type FieldSpec = {
   required?: boolean;
   prefilled?: boolean;
   options?: string[];
+  /** Buyer-facing label override. If omitted, falls back to humanize(name). */
+  label?: string;
 };
 
 type EnvelopeData = {
@@ -494,7 +496,9 @@ function BuyerField({ field, value, onChange }: {
   onChange: (v: string) => void;
 }) {
   const id = `field-${field.name}`;
-  const label = humanize(field.name);
+  // Prefer the explicit label from the template (buyer-facing copy);
+  // fall back to humanize(name) for legacy fields that don't carry a label.
+  const label = field.label ?? humanize(field.name);
 
   if (field.type === 'textarea') {
     return (
@@ -512,6 +516,24 @@ function BuyerField({ field, value, onChange }: {
           <option value="">— Select —</option>
           {field.options?.map((o: string) => <option key={o} value={o}>{o}</option>)}
         </select>
+      </div>
+    );
+  }
+  if (field.type === 'checkbox') {
+    // Stores '__YES__' or '__NO__' to match the LEADS database convention
+    // (existing checkbox-style columns are rich_text with these literal values).
+    const isChecked = value === '__YES__';
+    return (
+      <div className="field-row field-row-checkbox">
+        <label htmlFor={id} className="checkbox-label">
+          <input
+            id={id}
+            type="checkbox"
+            checked={isChecked}
+            onChange={(e) => onChange(e.target.checked ? '__YES__' : '__NO__')}
+          />
+          <span>{label}{field.required && <span className="required-mark">*</span>}</span>
+        </label>
       </div>
     );
   }
@@ -653,6 +675,9 @@ const styles = `
   .doc-paragraph { font-size: 0.9375rem; line-height: 1.6; margin: 0.5rem 0 0.75rem; text-align: justify; }
   .doc-clause { margin: 0.5rem 0 0.75rem; }
   .doc-clause strong { font-weight: 600; }
+  .field-row-checkbox { margin: 0.5rem 0; }
+  .checkbox-label { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-weight: normal; font-size: 0.9375rem; color: var(--ink); }
+  .checkbox-label input[type="checkbox"] { width: 1rem; height: 1rem; cursor: pointer; flex-shrink: 0; }
 
   .field-row { margin: 1rem 0; font-family: var(--sans); }
   .field-row label { display: block; font-size: 0.8125rem; color: var(--ink-soft); margin-bottom: 0.25rem; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 500; }
