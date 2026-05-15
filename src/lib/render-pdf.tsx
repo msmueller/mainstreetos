@@ -52,6 +52,13 @@ import { sha256Hex } from './signing-tokens';
 let fontsRegistered = false;
 function registerFontsOnce() {
   if (fontsRegistered) return;
+  // Disable React-PDF's automatic mid-word hyphenation. By default the layout
+  // engine will split long words across lines with a hyphen (e.g.
+  // "in- / dividually"). For form-style labels this looks broken — the word
+  // should either fit on the line or wrap whole to the next.
+  try {
+    Font.registerHyphenationCallback((word: string) => [word]);
+  } catch { /* registration failures are non-fatal */ }
   try {
     const path = require('path');
     const fs = require('fs');
@@ -145,11 +152,13 @@ function makeStyles(body: string) {
     letterheadMeta: { fontSize: 8.5, color: COLORS.inkSoft, textAlign: 'center', marginTop: 0 },
     letterheadLink: { fontSize: 8.5, color: COLORS.inkSoft, textDecoration: 'none' },
     listingStrip: {
-      flexDirection: 'row', flexWrap: 'wrap', gap: 10,
+      flexDirection: 'row', flexWrap: 'wrap',
       borderBottomWidth: 0.5, borderBottomColor: COLORS.rule,
       paddingBottom: 3, marginBottom: 4,
     },
-    listingItem: { fontSize: 9, marginRight: 12, marginBottom: 1 },
+    // lineHeight:1.0 single-spaces the wrapped lines of the listing strip
+    // (the page's default 1.45 line-height would otherwise leave gaps).
+    listingItem: { fontSize: 9, marginRight: 12, marginBottom: 0, lineHeight: 1.0 },
     listingLabel: { fontWeight: 'bold' },
     title: { fontSize: 16, textAlign: 'center', marginTop: 4, marginBottom: 6, fontWeight: 'bold' },
     sectionTitle: { fontSize: 12, fontWeight: 'bold', marginTop: 6, marginBottom: 3, borderBottomWidth: 0.5, borderBottomColor: COLORS.rule, paddingBottom: 2 },
