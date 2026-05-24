@@ -132,7 +132,12 @@ function makeStyles(body: string) {
   return StyleSheet.create({
     page: {
       paddingTop: 24,
-      paddingBottom: 40,
+      // 2026-05-24: bumped from 40 → 72 so the two-line audit footer
+      // (anchored absolute bottom:28, height ~28pt with border+padding)
+      // has guaranteed clear space at the bottom of every page. Under
+      // the old 40pt, @react-pdf was ejecting the footer onto the top
+      // of the NEXT page when main content filled the prior page.
+      paddingBottom: 72,
       paddingHorizontal: 56,
       fontFamily: body,
       fontSize: 10.5,
@@ -413,7 +418,7 @@ function SignedDocument({
 
         {/* Document title + preamble */}
         <Text style={styles.title}>Buyer Profile & Non-Disclosure Agreement</Text>
-        <Text style={styles.paragraph}>{t.preamble}</Text>
+        <Text style={styles.paragraph}>{mergeFields(t.preamble, v)}</Text>
 
         {/* Buyer Profile section */}
         <Text style={styles.sectionTitle}>{buyerProfile?.title ?? 'Buyer Profile'}</Text>
@@ -471,11 +476,11 @@ function SignedDocument({
             @react-pdf/renderer to begin this element on the next page. */}
         <View break>
           <Text style={styles.sectionTitle}>{ndaSection?.title ?? 'Non-Disclosure Agreement'}</Text>
-          {ndaSection?.preamble && <Text style={styles.paragraph}>{ndaSection.preamble}</Text>}
+          {ndaSection?.preamble && <Text style={styles.paragraph}>{mergeFields(ndaSection.preamble, v)}</Text>}
           {(ndaSection?.clauses ?? []).map((c: any, i: number) => (
             <Text key={i} style={styles.paragraph}>
               <Text style={styles.clauseHead}>§{c.number} {c.heading}.</Text>{' '}
-              {c.text}
+              {mergeFields(c.text, v)}
             </Text>
           ))}
         </View>
@@ -568,11 +573,14 @@ function SignedDocument({
             {input.auditCertUrl ? `  ·  Audit cert: ${shorten(input.auditCertUrl, 36)}` : ''}
           </Text>
           <Text
-            render={({ pageNumber, totalPages }: any) => {
+            render={({ pageNumber }: any) => {
               const geoSuffix = input.buyerGeolocation
                 ? ` (${[input.buyerGeolocation.city, input.buyerGeolocation.region, input.buyerGeolocation.country].filter(Boolean).join(', ')})`
                 : '';
-              return `Buyer signed ${input.signedAt.toISOString()} from ${input.signerIp ?? 'unknown IP'}${geoSuffix}  ·  Broker auto-signed ${formatIso(input.brokerSignedAt ?? input.signedAt)}  ·  Page ${pageNumber} of ${totalPages}`;
+              // Use pageNumber only (no totalPages) — totalPages forces a
+              // two-pass render in @react-pdf which can glitch on long
+              // multi-page documents. Single-pass `Page N` is reliable.
+              return `Buyer signed ${input.signedAt.toISOString()} from ${input.signerIp ?? 'unknown IP'}${geoSuffix}  ·  Broker auto-signed ${formatIso(input.brokerSignedAt ?? input.signedAt)}  ·  Page ${pageNumber}`;
             }}
           />
         </View>
@@ -725,6 +733,24 @@ async function readLocalToDataUri(relativePath: string): Promise<string | undefi
     }
   } catch { /* fall through */ }
   return undefined;
+}
+
+/** Substitute `{{token}}` references in a free-text block with values from
+ *  the envelope's filled_values map. Used for preamble / clause / footer
+ *  copy that may inline buyer_name, bra_effective_date, or other merge
+ *  fields. Phase 7 introduced this need; Phase 1-2 templates had no
+ *  merge fields in their NDA prose so the helper is backward-safe.
+ *
+ *  Whitespace inside `{{ ... }}` is tolerated so `{{ buyer_name }}` (the
+ *  occasional human edit of the JSONB) substitutes the same as
+ *  `{{buyer_name}}`.
+ */
+function mergeFields(text: string | undefined, values: Record<string, any>): string {
+  if (!text) return '';
+  return String(text).replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, token) => {
+    const v = values?.[token];
+    return v == null || v === '' ? '' : String(v);
+  });
 }
 
 function formatValue(v: any, format?: string): string {
