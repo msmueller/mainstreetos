@@ -185,17 +185,23 @@ function makeStyles(body: string) {
     sigTyped: { fontFamily: 'Caveat', fontSize: 22, color: COLORS.accent, lineHeight: 1.1 },
     sigImage: { width: 120, height: 36, objectFit: 'contain' },
     sigDrawn: { width: 180, height: 50, objectFit: 'contain' },
-    auditFooter: {
-      // 2026-05-24 (3rd attempt): explicit top:'auto' so @react-pdf doesn't
-      // default to top:0 (which would render the fixed footer at the TOP of
-      // each page). Bumped bottom 28→32 for a bit more breathing room above
-      // the page edge. Also: the JSX placement of this <View fixed> is now
-      // the FIRST child of <Page> (before letterhead), so @react-pdf
-      // establishes its fixed position before the content-flow pagination
-      // runs — fixed-after-long-content was the recurrence trigger.
-      position: 'absolute', top: 'auto', bottom: 32, left: 56, right: 56,
-      fontSize: 7.5, color: COLORS.inkSoft, lineHeight: 1.4,
-      borderTopWidth: 0.5, borderTopColor: COLORS.rule, paddingTop: 6,
+    // 5th-attempt audit footer (2026-05-24): pared down to the absolute
+    // minimum that @react-pdf docs document as working — two separate
+    // <Text fixed> elements at different `bottom` offsets, no border, no
+    // paddingTop, no top:'auto', no lineHeight gimmicks. Each line is its
+    // own single-line Text. The docs explicitly show this exact pattern
+    // for a footer page-number, so any deviation introduces risk.
+    auditFooterLine1: {
+      position: 'absolute', bottom: 38, left: 56, right: 56,
+      fontSize: 7.5, color: COLORS.inkSoft, textAlign: 'left',
+    },
+    auditFooterLine2: {
+      position: 'absolute', bottom: 24, left: 56, right: 56,
+      fontSize: 7.5, color: COLORS.inkSoft, textAlign: 'left',
+    },
+    auditFooterRule: {
+      position: 'absolute', bottom: 52, left: 56, right: 56,
+      borderTopWidth: 0.5, borderTopColor: COLORS.rule, height: 1,
     },
     pageNumber: {
       position: 'absolute', bottom: 12, left: 0, right: 56,
@@ -567,27 +573,28 @@ function SignedDocument({
         </View>
         </View>{/* end signature-blocks wrap={false} pair */}
 
-        {/* Audit footer — single Text+fixed element. Earlier attempts used
-            <View fixed> with two child <Text> rows, but in this version of
-            @react-pdf, View+fixed wasn't honoring position:absolute on
-            long multi-page documents, causing the footer to render at the
-            TOP of pages instead of the bottom. The documented working
-            pattern is a single <Text fixed> with the render callback
-            returning a multi-line string (with literal '\n' breaks). */}
-        <Text
-          fixed
-          style={styles.auditFooter}
-          render={({ pageNumber }: any) => {
-            const geoSuffix = input.buyerGeolocation
-              ? ` (${[input.buyerGeolocation.city, input.buyerGeolocation.region, input.buyerGeolocation.country].filter(Boolean).join(', ')})`
-              : '';
+        {/* Audit footer — three separate fixed elements (rule + 2 text lines)
+            each positioned absolutely at distinct `bottom` offsets. This
+            is the @react-pdf documented pattern: <Text fixed> with
+            position:absolute + bottom:N renders the element at that
+            offset from the bottom of every page. Using single-line Text
+            elements avoids any flexbox / multi-child / \n quirks. */}
+        <View fixed style={styles.auditFooterRule} />
+        <Text fixed style={styles.auditFooterLine1}
+          render={() => {
             const auditCertSuffix = input.auditCertUrl
               ? `  ·  Audit cert: ${shorten(input.auditCertUrl, 36)}`
               : '';
             const disclosureLabel = input.disclosureVersionLabel ?? 'ESIGN_CONSENT_v1';
-            const line1 = `Envelope No. ${input.envelopeNumber}  ·  Disclosure: ${disclosureLabel}${auditCertSuffix}`;
-            const line2 = `Buyer signed ${input.signedAt.toISOString()} from ${input.signerIp ?? 'unknown IP'}${geoSuffix}  ·  Broker auto-signed ${formatIso(input.brokerSignedAt ?? input.signedAt)}  ·  Page ${pageNumber}`;
-            return `${line1}\n${line2}`;
+            return `Envelope No. ${input.envelopeNumber ?? ''}  ·  Disclosure: ${disclosureLabel}${auditCertSuffix}`;
+          }}
+        />
+        <Text fixed style={styles.auditFooterLine2}
+          render={({ pageNumber }: any) => {
+            const geoSuffix = input.buyerGeolocation
+              ? ` (${[input.buyerGeolocation.city, input.buyerGeolocation.region, input.buyerGeolocation.country].filter(Boolean).join(', ')})`
+              : '';
+            return `Buyer signed ${input.signedAt.toISOString()} from ${input.signerIp ?? 'unknown IP'}${geoSuffix}  ·  Broker auto-signed ${formatIso(input.brokerSignedAt ?? input.signedAt)}  ·  Page ${pageNumber}`;
           }}
         />
       </Page>

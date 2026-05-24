@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
       id, envelope_id, role, email, name, status,
       token_expires_at, token_consumed_at,
       sign_envelopes!inner (
-        id, status, template_id, template_version, filled_values,
+        id, envelope_number, status, template_id, template_version, filled_values,
         notion_lead_id, notion_listing_id, listing_business_name,
         sign_templates!inner ( id, source, source_sha256, fields_schema, disclosure_version_id )
       )
