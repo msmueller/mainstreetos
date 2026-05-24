@@ -375,32 +375,6 @@ function SignedDocument({
       producer="MainStreetOS"
     >
       <Page size="LETTER" style={styles.page}>
-        {/* Audit footer — declared FIRST inside <Page> so @react-pdf
-            establishes its fixed-positioned slot before walking the
-            content tree. Long Phase 7 documents (54 fields + 13 clauses)
-            previously triggered a layout glitch where placing the fixed
-            footer AFTER content pushed it to the top of the next page.
-            Render order is irrelevant for fixed elements — they appear
-            at their absolute position on every page regardless of JSX
-            order — but DECLARATION order matters to @react-pdf's
-            internal layout pass. */}
-        <View fixed style={styles.auditFooter}>
-          <Text>
-            Envelope No. {input.envelopeNumber}
-            {'  ·  '}
-            Disclosure: {input.disclosureVersionLabel ?? 'ESIGN_CONSENT_v1'}
-            {input.auditCertUrl ? `  ·  Audit cert: ${shorten(input.auditCertUrl, 36)}` : ''}
-          </Text>
-          <Text
-            render={({ pageNumber }: any) => {
-              const geoSuffix = input.buyerGeolocation
-                ? ` (${[input.buyerGeolocation.city, input.buyerGeolocation.region, input.buyerGeolocation.country].filter(Boolean).join(', ')})`
-                : '';
-              return `Buyer signed ${input.signedAt.toISOString()} from ${input.signerIp ?? 'unknown IP'}${geoSuffix}  ·  Broker auto-signed ${formatIso(input.brokerSignedAt ?? input.signedAt)}  ·  Page ${pageNumber}`;
-            }}
-          />
-        </View>
-
         {/* Letterhead — three columns: CRE logo, broker info, Powered by MainStreetOS logo.
             Logos sized to fit within the height of the 2-line text block. */}
         <View style={styles.letterhead}>
@@ -593,8 +567,29 @@ function SignedDocument({
         </View>
         </View>{/* end signature-blocks wrap={false} pair */}
 
-        {/* Audit footer is rendered as the FIRST child of <Page> above, not
-            here. See the comment at the top of the Page for why. */}
+        {/* Audit footer — single Text+fixed element. Earlier attempts used
+            <View fixed> with two child <Text> rows, but in this version of
+            @react-pdf, View+fixed wasn't honoring position:absolute on
+            long multi-page documents, causing the footer to render at the
+            TOP of pages instead of the bottom. The documented working
+            pattern is a single <Text fixed> with the render callback
+            returning a multi-line string (with literal '\n' breaks). */}
+        <Text
+          fixed
+          style={styles.auditFooter}
+          render={({ pageNumber }: any) => {
+            const geoSuffix = input.buyerGeolocation
+              ? ` (${[input.buyerGeolocation.city, input.buyerGeolocation.region, input.buyerGeolocation.country].filter(Boolean).join(', ')})`
+              : '';
+            const auditCertSuffix = input.auditCertUrl
+              ? `  ·  Audit cert: ${shorten(input.auditCertUrl, 36)}`
+              : '';
+            const disclosureLabel = input.disclosureVersionLabel ?? 'ESIGN_CONSENT_v1';
+            const line1 = `Envelope No. ${input.envelopeNumber}  ·  Disclosure: ${disclosureLabel}${auditCertSuffix}`;
+            const line2 = `Buyer signed ${input.signedAt.toISOString()} from ${input.signerIp ?? 'unknown IP'}${geoSuffix}  ·  Broker auto-signed ${formatIso(input.brokerSignedAt ?? input.signedAt)}  ·  Page ${pageNumber}`;
+            return `${line1}\n${line2}`;
+          }}
+        />
       </Page>
     </Document>
   );
