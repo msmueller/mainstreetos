@@ -185,23 +185,25 @@ function makeStyles(body: string) {
     sigTyped: { fontFamily: 'Caveat', fontSize: 22, color: COLORS.accent, lineHeight: 1.1 },
     sigImage: { width: 120, height: 36, objectFit: 'contain' },
     sigDrawn: { width: 180, height: 50, objectFit: 'contain' },
-    // 5th-attempt audit footer (2026-05-24): pared down to the absolute
-    // minimum that @react-pdf docs document as working — two separate
-    // <Text fixed> elements at different `bottom` offsets, no border, no
-    // paddingTop, no top:'auto', no lineHeight gimmicks. Each line is its
-    // own single-line Text. The docs explicitly show this exact pattern
-    // for a footer page-number, so any deviation introduces risk.
-    auditFooterLine1: {
-      position: 'absolute', bottom: 38, left: 56, right: 56,
-      fontSize: 7.5, color: COLORS.inkSoft, textAlign: 'left',
+    // Audit footer (6th attempt — 2026-05-24): @react-pdf v4.5.1 ignores
+    // `position: absolute` on `fixed` Text/View elements when the document
+    // spans multiple pages, falling back to top-of-page header behavior.
+    // After 5 failed attempts at per-page fixed footers, switched to a
+    // STRUCTURAL audit block that flows after the signature blocks on the
+    // last page only. Per-page page-numbers are lost (PDF viewers show
+    // those natively anyway), but the audit data lands reliably with the
+    // signatures where it has legal value.
+    auditBlock: {
+      marginTop: 14,
+      paddingTop: 8,
+      borderTopWidth: 0.5,
+      borderTopColor: COLORS.rule,
     },
-    auditFooterLine2: {
-      position: 'absolute', bottom: 24, left: 56, right: 56,
-      fontSize: 7.5, color: COLORS.inkSoft, textAlign: 'left',
-    },
-    auditFooterRule: {
-      position: 'absolute', bottom: 52, left: 56, right: 56,
-      borderTopWidth: 0.5, borderTopColor: COLORS.rule, height: 1,
+    auditBlockLine: {
+      fontSize: 8,
+      color: COLORS.inkSoft,
+      marginBottom: 2,
+      lineHeight: 1.4,
     },
     pageNumber: {
       position: 'absolute', bottom: 12, left: 0, right: 56,
@@ -573,30 +575,29 @@ function SignedDocument({
         </View>
         </View>{/* end signature-blocks wrap={false} pair */}
 
-        {/* Audit footer — three separate fixed elements (rule + 2 text lines)
-            each positioned absolutely at distinct `bottom` offsets. This
-            is the @react-pdf documented pattern: <Text fixed> with
-            position:absolute + bottom:N renders the element at that
-            offset from the bottom of every page. Using single-line Text
-            elements avoids any flexbox / multi-child / \n quirks. */}
-        <View fixed style={styles.auditFooterRule} />
-        <Text fixed style={styles.auditFooterLine1}
-          render={() => {
-            const auditCertSuffix = input.auditCertUrl
-              ? `  ·  Audit cert: ${shorten(input.auditCertUrl, 36)}`
-              : '';
-            const disclosureLabel = input.disclosureVersionLabel ?? 'ESIGN_CONSENT_v1';
-            return `Envelope No. ${input.envelopeNumber ?? ''}  ·  Disclosure: ${disclosureLabel}${auditCertSuffix}`;
-          }}
-        />
-        <Text fixed style={styles.auditFooterLine2}
-          render={({ pageNumber }: any) => {
-            const geoSuffix = input.buyerGeolocation
+        {/* Audit block — structural footer that flows immediately after the
+            BUYER + BROKER signature blocks on the last page. This replaces
+            the prior per-page <Text fixed> footer which @react-pdf v4.5.1
+            couldn't position reliably on long multi-page documents. The
+            audit data lands here with the signatures (where it has legal
+            value) instead of being repeated on every page. */}
+        <View style={styles.auditBlock} wrap={false}>
+          <Text style={styles.auditBlockLine}>
+            Envelope No. {input.envelopeNumber ?? ''}
+            {'  ·  '}
+            Disclosure: {input.disclosureVersionLabel ?? 'ESIGN_CONSENT_v1'}
+            {input.auditCertUrl ? `  ·  Audit cert: ${shorten(input.auditCertUrl, 36)}` : ''}
+          </Text>
+          <Text style={styles.auditBlockLine}>
+            Buyer signed {input.signedAt.toISOString()}{' '}
+            from {input.signerIp ?? 'unknown IP'}
+            {input.buyerGeolocation
               ? ` (${[input.buyerGeolocation.city, input.buyerGeolocation.region, input.buyerGeolocation.country].filter(Boolean).join(', ')})`
-              : '';
-            return `Buyer signed ${input.signedAt.toISOString()} from ${input.signerIp ?? 'unknown IP'}${geoSuffix}  ·  Broker auto-signed ${formatIso(input.brokerSignedAt ?? input.signedAt)}  ·  Page ${pageNumber}`;
-          }}
-        />
+              : ''}
+            {'  ·  '}
+            Broker auto-signed {formatIso(input.brokerSignedAt ?? input.signedAt)}
+          </Text>
+        </View>
       </Page>
     </Document>
   );
