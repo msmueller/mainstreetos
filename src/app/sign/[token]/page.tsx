@@ -448,9 +448,27 @@ function DocumentRenderer({
       </header>
 
       <div className="doc-listing-strip">
-        <span><strong>Date:</strong> {filledValues.effective_date}</span>
-        <span><strong>Business:</strong> {filledValues.business_name}</span>
-        <span><strong>Listing Ref. #:</strong> {filledValues.listing_ref_number}</span>
+        {filledValues.effective_date && (
+          <span><strong>Date:</strong> {filledValues.effective_date}</span>
+        )}
+        {filledValues.business_name && (
+          <span><strong>Business:</strong> {filledValues.business_name}</span>
+        )}
+        {filledValues.transaction_type && (
+          <span><strong>Transaction:</strong> {filledValues.transaction_type}</span>
+        )}
+        {filledValues.listing_ref_number && (
+          <span><strong>Listing Ref. #:</strong> {filledValues.listing_ref_number}</span>
+        )}
+        {filledValues.industry && (
+          <span><strong>Industry:</strong> {filledValues.industry}</span>
+        )}
+        {filledValues.location && (
+          <span><strong>Location:</strong> {filledValues.location}</span>
+        )}
+        {filledValues.description && (
+          <span><strong>Description:</strong> {filledValues.description}</span>
+        )}
       </div>
 
       <h1 className="doc-title">Buyer Profile & Non-Disclosure Agreement</h1>
@@ -467,6 +485,11 @@ function DocumentRenderer({
             />
           ))}
       </section>
+
+      {/* Phase 7 templates may use the new Section A / Section B layout where
+          the Buyer Profile is divided into 9 numbered sub-sections. The
+          section_header field type acts as a visual divider in the buyer
+          field list. BuyerField below knows to render those as <h3>. */}
 
       <section className="doc-section">
         <h2>{templateSource?.nda_section?.title ?? 'Non-Disclosure Agreement'}</h2>
@@ -507,6 +530,55 @@ function BuyerField({ field, value, onChange }: {
   // Prefer the explicit label from the template (buyer-facing copy);
   // fall back to humanize(name) for legacy fields that don't carry a label.
   const label = field.label ?? humanize(field.name);
+
+  // Phase 7: section_header is a visual divider, not an input. Skip when
+  // present in older Phase 1-2 templates (no section_header rows there).
+  if (field.type === 'section_header') {
+    return (
+      <h3 className="doc-section-header" style={{
+        marginTop: '1.5rem',
+        marginBottom: '0.5rem',
+        paddingTop: '0.75rem',
+        borderTop: '2px solid #2c3e50',
+        fontSize: '1.05rem',
+        fontWeight: 600,
+        color: '#2c3e50',
+      }}>
+        {label}
+      </h3>
+    );
+  }
+
+  // Phase 7: multi_select renders as a checkbox group. The value is stored
+  // as a JSON-encoded array of strings (consistent with Notion multi_select
+  // sync convention).
+  if (field.type === 'multi_select') {
+    let selected: string[] = [];
+    try { selected = value ? JSON.parse(value) : []; } catch { selected = []; }
+    const toggle = (opt: string) => {
+      const next = selected.includes(opt)
+        ? selected.filter((s) => s !== opt)
+        : [...selected, opt];
+      onChange(JSON.stringify(next));
+    };
+    return (
+      <div className="field-row">
+        <label>{label}{field.required && <span className="required-mark">*</span>}</label>
+        <div className="multi-select-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginTop: '0.25rem' }}>
+          {field.options?.map((opt: string) => (
+            <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 400 }}>
+              <input
+                type="checkbox"
+                checked={selected.includes(opt)}
+                onChange={() => toggle(opt)}
+              />
+              <span>{opt}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   if (field.type === 'textarea') {
     return (

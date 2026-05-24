@@ -415,17 +415,53 @@ function SignedDocument({
         {/* Buyer Profile section */}
         <Text style={styles.sectionTitle}>{buyerProfile?.title ?? 'Buyer Profile'}</Text>
         {buyerProfile?.intro && <Text style={styles.sectionIntro}>{buyerProfile.intro}</Text>}
-        {(buyerProfile?.fields ?? []).map((f: any, i: number) => {
-          const tokenName = String(f.token ?? '').replace(/[{}]/g, '');
-          const value = v[tokenName];
-          if (value == null || value === '') return null;
-          return (
-            <View key={i} style={styles.fieldRow} wrap={false}>
-              <Text style={styles.fieldLabel}>{f.label}</Text>
-              <Text style={styles.fieldValue}>{formatValue(value, f.format)}</Text>
+
+        {/* Phase 7 template structure: buyer_profile_section.sections[] with
+            a fields[] array inside each. Phase 1-2 structure: flat
+            buyer_profile_section.fields[]. Handle both. */}
+        {Array.isArray(buyerProfile?.sections) ? (
+          buyerProfile.sections.map((section: any, si: number) => (
+            <View key={`sec-${si}`} wrap={false}>
+              <Text style={styles.sectionSubheading ?? styles.sectionTitle}>
+                {section.number ? `${section.number}. ` : ''}{section.title}
+              </Text>
+              {(section.fields ?? []).map((f: any, i: number) => {
+                const tokenName = String(f.token ?? '').replace(/[{}]/g, '');
+                let value = v[tokenName];
+                if (value == null || value === '') return null;
+                // multi_select values arrive as JSON-encoded arrays from the
+                // signing page — render as comma-separated list on the PDF.
+                if (typeof value === 'string' && value.startsWith('[')) {
+                  try {
+                    const parsed = JSON.parse(value);
+                    if (Array.isArray(parsed)) value = parsed.join(', ');
+                  } catch { /* leave as-is */ }
+                }
+                // Yes/No checkboxes stored as __YES__/__NO__ — humanize.
+                if (value === '__YES__') value = 'Yes';
+                if (value === '__NO__')  value = 'No';
+                return (
+                  <View key={`${si}-${i}`} style={styles.fieldRow} wrap={false}>
+                    <Text style={styles.fieldLabel}>{f.label}</Text>
+                    <Text style={styles.fieldValue}>{formatValue(String(value), f.format)}</Text>
+                  </View>
+                );
+              })}
             </View>
-          );
-        })}
+          ))
+        ) : (
+          (buyerProfile?.fields ?? []).map((f: any, i: number) => {
+            const tokenName = String(f.token ?? '').replace(/[{}]/g, '');
+            const value = v[tokenName];
+            if (value == null || value === '') return null;
+            return (
+              <View key={i} style={styles.fieldRow} wrap={false}>
+                <Text style={styles.fieldLabel}>{f.label}</Text>
+                <Text style={styles.fieldValue}>{formatValue(value, f.format)}</Text>
+              </View>
+            );
+          })
+        )}
 
         {/* NDA section — force start on a new page so page 1 stays focused on
             the Buyer Profile. The `break` prop on a View instructs
