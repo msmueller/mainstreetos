@@ -561,18 +561,47 @@ function BuyerField({ field, value, onChange }: {
         : [...selected, opt];
       onChange(JSON.stringify(next));
     };
+    // Aggressive inline overrides to defeat inherited .field-row > label
+    // right-alignment and grid-column behavior — we want a left-aligned
+    // column of {checkbox | text} rows with no per-row width games.
     return (
-      <div className="field-row">
-        <label>{label}{field.required && <span className="required-mark">*</span>}</label>
-        <div className="multi-select-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginTop: '0.25rem' }}>
+      <div className="field-row" style={{ display: 'block', textAlign: 'left' }}>
+        <label style={{ display: 'block', textAlign: 'left', marginBottom: '0.5rem' }}>
+          {label}{field.required && <span className="required-mark">*</span>}
+        </label>
+        <div
+          className="multi-select-group"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.4rem',
+            paddingLeft: '0.25rem',
+            alignItems: 'flex-start',
+          }}
+        >
           {field.options?.map((opt: string) => (
-            <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 400 }}>
+            <label
+              key={opt}
+              style={{
+                display: 'flex',
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'flex-start',
+                gap: '0.6rem',
+                fontWeight: 400,
+                cursor: 'pointer',
+                width: 'auto',
+                textAlign: 'left',
+                margin: 0,
+              }}
+            >
               <input
                 type="checkbox"
                 checked={selected.includes(opt)}
                 onChange={() => toggle(opt)}
+                style={{ flexShrink: 0, margin: 0, width: '1rem', height: '1rem' }}
               />
-              <span>{opt}</span>
+              <span style={{ textAlign: 'left', whiteSpace: 'normal', flex: '0 1 auto' }}>{opt}</span>
             </label>
           ))}
         </div>
