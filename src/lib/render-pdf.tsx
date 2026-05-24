@@ -143,7 +143,10 @@ function makeStyles(body: string) {
     letterheadRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
     letterheadCenter: { flex: 1, justifyContent: 'center' },
     letterheadLogo: { width: 60, height: 60, objectFit: 'contain' },
-    poweredByLogo: { width: 110, height: 36, objectFit: 'contain' },
+    // Narrowed from 110→75 (2026-05-24) so Phase 7 letterhead center column
+    // has room to fit the longer "Buyer's Broker | …" role line + full
+    // address on one line instead of wrapping "08560" onto its own line.
+    poweredByLogo: { width: 75, height: 36, objectFit: 'contain' },
     letterheadCompany: { fontSize: 12, fontWeight: 'bold', textAlign: 'center' },
     // Credential text (", CAIBVS™") rendered 2pt smaller than its parent
     // (12pt → 10pt in letterhead, 10pt → 8pt in signature block).
@@ -477,7 +480,13 @@ function SignedDocument({
           ))}
         </View>
 
-        {/* Signature block */}
+        {/* Signature blocks — wrap BUYER + BROKER together with wrap={false}
+            on the parent so the pair stays on a single page (each child
+            already has its own wrap={false} for internal cohesion, but
+            without this outer wrapper @react-pdf/renderer can still split
+            between the two blocks at a page boundary). */}
+        <View wrap={false}>
+        {/* Signature block — BUYER */}
         <View style={styles.sigBlock} wrap={false}>
           <Text style={styles.sigHeading}>BUYER</Text>
           {v.buyer_entity && (
@@ -544,8 +553,13 @@ function SignedDocument({
             <Text style={styles.sigValue}>{v.broker_email ?? 'markm@creresources.biz'}</Text>
           </View>
         </View>
+        </View>{/* end signature-blocks wrap={false} pair */}
 
-        {/* Audit footer — appears on every page (re-rendered on each page) */}
+        {/* Audit footer — appears on every page (re-rendered on each page).
+            Page number is now appended to the second line so it travels
+            with the audit data on the page it actually refers to, rather
+            than floating to the top of the next page as a separate fixed
+            element. */}
         <View fixed style={styles.auditFooter}>
           <Text>
             Envelope No. {input.envelopeNumber}
@@ -553,21 +567,15 @@ function SignedDocument({
             Disclosure: {input.disclosureVersionLabel ?? 'ESIGN_CONSENT_v1'}
             {input.auditCertUrl ? `  ·  Audit cert: ${shorten(input.auditCertUrl, 36)}` : ''}
           </Text>
-          <Text>
-            Buyer signed {input.signedAt.toISOString()}{' '}
-            from {input.signerIp ?? 'unknown IP'}
-            {input.buyerGeolocation
-              ? ` (${[input.buyerGeolocation.city, input.buyerGeolocation.region, input.buyerGeolocation.country].filter(Boolean).join(', ')})`
-              : ''}
-            {'  ·  '}
-            Broker auto-signed {formatIso(input.brokerSignedAt ?? input.signedAt)}
-          </Text>
+          <Text
+            render={({ pageNumber, totalPages }: any) => {
+              const geoSuffix = input.buyerGeolocation
+                ? ` (${[input.buyerGeolocation.city, input.buyerGeolocation.region, input.buyerGeolocation.country].filter(Boolean).join(', ')})`
+                : '';
+              return `Buyer signed ${input.signedAt.toISOString()} from ${input.signerIp ?? 'unknown IP'}${geoSuffix}  ·  Broker auto-signed ${formatIso(input.brokerSignedAt ?? input.signedAt)}  ·  Page ${pageNumber} of ${totalPages}`;
+            }}
+          />
         </View>
-        <Text
-          fixed
-          style={styles.pageNumber}
-          render={({ pageNumber }: any) => `Page - ${pageNumber}`}
-        />
       </Page>
     </Document>
   );
