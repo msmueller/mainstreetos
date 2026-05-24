@@ -186,7 +186,14 @@ function makeStyles(body: string) {
     sigImage: { width: 120, height: 36, objectFit: 'contain' },
     sigDrawn: { width: 180, height: 50, objectFit: 'contain' },
     auditFooter: {
-      position: 'absolute', bottom: 28, left: 56, right: 56,
+      // 2026-05-24 (3rd attempt): explicit top:'auto' so @react-pdf doesn't
+      // default to top:0 (which would render the fixed footer at the TOP of
+      // each page). Bumped bottom 28→32 for a bit more breathing room above
+      // the page edge. Also: the JSX placement of this <View fixed> is now
+      // the FIRST child of <Page> (before letterhead), so @react-pdf
+      // establishes its fixed position before the content-flow pagination
+      // runs — fixed-after-long-content was the recurrence trigger.
+      position: 'absolute', top: 'auto', bottom: 32, left: 56, right: 56,
       fontSize: 7.5, color: COLORS.inkSoft, lineHeight: 1.4,
       borderTopWidth: 0.5, borderTopColor: COLORS.rule, paddingTop: 6,
     },
@@ -368,6 +375,32 @@ function SignedDocument({
       producer="MainStreetOS"
     >
       <Page size="LETTER" style={styles.page}>
+        {/* Audit footer — declared FIRST inside <Page> so @react-pdf
+            establishes its fixed-positioned slot before walking the
+            content tree. Long Phase 7 documents (54 fields + 13 clauses)
+            previously triggered a layout glitch where placing the fixed
+            footer AFTER content pushed it to the top of the next page.
+            Render order is irrelevant for fixed elements — they appear
+            at their absolute position on every page regardless of JSX
+            order — but DECLARATION order matters to @react-pdf's
+            internal layout pass. */}
+        <View fixed style={styles.auditFooter}>
+          <Text>
+            Envelope No. {input.envelopeNumber}
+            {'  ·  '}
+            Disclosure: {input.disclosureVersionLabel ?? 'ESIGN_CONSENT_v1'}
+            {input.auditCertUrl ? `  ·  Audit cert: ${shorten(input.auditCertUrl, 36)}` : ''}
+          </Text>
+          <Text
+            render={({ pageNumber }: any) => {
+              const geoSuffix = input.buyerGeolocation
+                ? ` (${[input.buyerGeolocation.city, input.buyerGeolocation.region, input.buyerGeolocation.country].filter(Boolean).join(', ')})`
+                : '';
+              return `Buyer signed ${input.signedAt.toISOString()} from ${input.signerIp ?? 'unknown IP'}${geoSuffix}  ·  Broker auto-signed ${formatIso(input.brokerSignedAt ?? input.signedAt)}  ·  Page ${pageNumber}`;
+            }}
+          />
+        </View>
+
         {/* Letterhead — three columns: CRE logo, broker info, Powered by MainStreetOS logo.
             Logos sized to fit within the height of the 2-line text block. */}
         <View style={styles.letterhead}>
@@ -560,30 +593,8 @@ function SignedDocument({
         </View>
         </View>{/* end signature-blocks wrap={false} pair */}
 
-        {/* Audit footer — appears on every page (re-rendered on each page).
-            Page number is now appended to the second line so it travels
-            with the audit data on the page it actually refers to, rather
-            than floating to the top of the next page as a separate fixed
-            element. */}
-        <View fixed style={styles.auditFooter}>
-          <Text>
-            Envelope No. {input.envelopeNumber}
-            {'  ·  '}
-            Disclosure: {input.disclosureVersionLabel ?? 'ESIGN_CONSENT_v1'}
-            {input.auditCertUrl ? `  ·  Audit cert: ${shorten(input.auditCertUrl, 36)}` : ''}
-          </Text>
-          <Text
-            render={({ pageNumber }: any) => {
-              const geoSuffix = input.buyerGeolocation
-                ? ` (${[input.buyerGeolocation.city, input.buyerGeolocation.region, input.buyerGeolocation.country].filter(Boolean).join(', ')})`
-                : '';
-              // Use pageNumber only (no totalPages) — totalPages forces a
-              // two-pass render in @react-pdf which can glitch on long
-              // multi-page documents. Single-pass `Page N` is reliable.
-              return `Buyer signed ${input.signedAt.toISOString()} from ${input.signerIp ?? 'unknown IP'}${geoSuffix}  ·  Broker auto-signed ${formatIso(input.brokerSignedAt ?? input.signedAt)}  ·  Page ${pageNumber}`;
-            }}
-          />
-        </View>
+        {/* Audit footer is rendered as the FIRST child of <Page> above, not
+            here. See the comment at the top of the Page for why. */}
       </Page>
     </Document>
   );
