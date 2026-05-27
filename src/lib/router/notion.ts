@@ -98,6 +98,11 @@ const LEADS_PROPERTY_MAP = {
   desired_industries: 'BP Desired Industries',
   company: 'Company',
   zip_code: 'Zip Code',
+  // Phase 8 (2026-05-26): drives click-wrap template selection.
+  // Values: "Institutional" → NDA_BuyerProfile_Corporate;
+  // "MainStreetO&O" → NDA_BuyerProfile_MidMarket (not yet seeded);
+  // empty/other → NDA_BuyerProfile (default).
+  buyer_profile_type: 'Buyer Profile Type',
 } as const;
 
 /**
@@ -120,6 +125,7 @@ export async function fetchNotionLead(pageId: string): Promise<{
   amount_to_invest: number | null;
   timeframe: string | null;
   desired_industries: string | null;
+  buyer_profile_type: string | null;
 }> {
   const notion = getNotionClient();
   const page = await notion.pages.retrieve({ page_id: pageId });
@@ -148,6 +154,7 @@ export async function fetchNotionLead(pageId: string): Promise<{
     amount_to_invest: readNumber(props[map.amount_to_invest]),
     timeframe: readSelect(props[map.timeframe]),
     desired_industries: readRichText(props[map.desired_industries]),
+    buyer_profile_type: readSelect(props[map.buyer_profile_type]),
   };
 }
 
@@ -173,6 +180,11 @@ const LISTINGS_PROPERTY_MAP = {
   nda_link: 'NDA & Buyer Profile',
   bbs_link: 'Listing Link',
   loi_link: 'LOI Form',
+  // Phase 8 (2026-05-26): listing-level fallback used by the Lead Router
+  // when a new LEADS row's own Buyer Profile Type is empty. Set this to
+  // "Institutional" on high-value listings (Royal Silk, Yogi International,
+  // etc.) and all future inquiries auto-route to NDA_BuyerProfile_Corporate.
+  default_buyer_profile_type: 'Default Buyer Profile Type',
 } as const;
 
 export async function fetchNotionListing(pageId: string): Promise<Partial<Listing> & { notion_page_id: string }> {
@@ -203,6 +215,7 @@ export async function fetchNotionListing(pageId: string): Promise<Partial<Listin
     nda_link: readUrl(props[map.nda_link]),
     bbs_link: readUrl(props[map.bbs_link]),
     loi_link: readUrl(props[map.loi_link]),
+    default_buyer_profile_type: readSelect(props[map.default_buyer_profile_type]),
   };
 }
 

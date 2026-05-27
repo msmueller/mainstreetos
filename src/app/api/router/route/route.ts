@@ -126,6 +126,45 @@ export async function POST(req: NextRequest) {
     // Calendar availability
     const available_slots = await getAvailableSlots();
 
+    // Phase 8 (2026-05-26): pick click-wrap template based on Buyer Profile
+    // Type. Resolution order: LEADS row's Buyer Profile Type (Mark sets per
+    // lead) → LISTING's Default Buyer Profile Type (high-value listings like
+    // Royal Silk and Yogi International default to Institutional) →
+    // "MainStreet O&O" (Main Street NDA_BuyerProfile fallback).
+    //
+    // LEADS DB select values (exact strings, verified 2026-05-26 against
+    // Notion data source 3349af07-54ec-809f-ab32-000b3719dfbf):
+    //   - "Institutional"   → corporate-grade buyer (PE, family office,
+    //                          strategic, sophisticated entity)
+    //   - "Investment"      → investment-grade buyer (similar profile depth
+    //                          needed; routes to Corporate template)
+    //   - "MidMarket O&O"   → mid-market owner-operator (heavier than std
+    //                          Main Street, lighter than Corporate)
+    //   - "MainStreet O&O"  → traditional Main Street owner-operator (default)
+    const effectiveBuyerProfileType =
+      lead.buyer_profile_type
+      ?? enriched.default_buyer_profile_type
+      ?? 'MainStreet O&O';
+    let ndaTemplateKey: string;
+    switch (effectiveBuyerProfileType) {
+      case 'Institutional':
+      case 'Investment':
+        // Both route to the seeded Corporate template — 9-section, 54-field
+        // profile + 13-clause NDA.
+        ndaTemplateKey = 'NDA_BuyerProfile_Corporate';
+        break;
+      case 'MidMarket O&O':
+        // MidMarket template not yet seeded; fall back to standard for now
+        // so sends don't fail. Swap to 'NDA_BuyerProfile_MidMarket' once
+        // seeded.
+        ndaTemplateKey = 'NDA_BuyerProfile';
+        break;
+      case 'MainStreet O&O':
+      default:
+        ndaTemplateKey = 'NDA_BuyerProfile';
+    }
+    console.log(`[router/route] Buyer Profile Type='${effectiveBuyerProfileType}' (from ${lead.buyer_profile_type ? 'LEADS row' : enriched.default_buyer_profile_type ? 'LISTING default' : 'fallback'}) → templateKey='${ndaTemplateKey}'`);
+
     // Mint click-wrap NDA envelope (graceful: failure does NOT block Email #1).
     // The Router calls /api/sign/create with suppressAutoEmail=true; click-wrap
     // creates the envelope, returns a unique signingUrl, and SKIPS sending its
@@ -139,7 +178,7 @@ export async function POST(req: NextRequest) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            templateKey: 'NDA_BuyerProfile',
+            templateKey: ndaTemplateKey,
             notionLeadId: notion_lead_page_id,
             notionListingId: enriched.notion_page_id,
             buyer: {

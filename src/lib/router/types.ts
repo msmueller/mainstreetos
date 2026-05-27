@@ -82,6 +82,11 @@ export interface LeadContext {
   cobroker: string | null;
   /** Number of prior buyer_leads with same email */
   previous_interactions_count: number;
+  /** "Buyer Profile Type" from LEADS Notion row — drives click-wrap
+   *  template selection. Values: "Institutional" → NDA_BuyerProfile_Corporate,
+   *  "MainStreetO&O" → NDA_BuyerProfile_MidMarket (not yet seeded),
+   *  any other / null → NDA_BuyerProfile (default). */
+  buyer_profile_type: string | null;
 }
 
 /**
@@ -118,6 +123,12 @@ export interface Listing {
   bbs_link: string | null;
   /** Per-listing LOI form URL (typically a Google Docs template). */
   loi_link: string | null;
+  /** "Default Buyer Profile Type" from LISTINGS Notion row — used as
+   *  fallback by the Lead Router when a new LEADS row's own
+   *  Buyer Profile Type is empty. Lets Mark flag high-value listings
+   *  (Royal Silk, Yogi International, etc.) as Institutional once and
+   *  have all future inquiries auto-route to NDA_BuyerProfile_Corporate. */
+  default_buyer_profile_type: string | null;
 }
 
 // ---------------------------------------------------------------------------
