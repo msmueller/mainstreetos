@@ -83,10 +83,12 @@ export interface LeadContext {
   /** Number of prior buyer_leads with same email */
   previous_interactions_count: number;
   /** "Buyer Profile Type" from LEADS Notion row — drives click-wrap
-   *  template selection. Values: "Institutional" → NDA_BuyerProfile_Corporate,
-   *  "MainStreetO&O" → NDA_BuyerProfile_MidMarket (not yet seeded),
-   *  any other / null → NDA_BuyerProfile (default). */
-  buyer_profile_type: string | null;
+   *  template selection. Values: "Institutional" + "Investment" →
+   *  NDA_BuyerProfile_Corporate; "MidMarket O&O" → MidMarket (not yet
+   *  seeded — falls back to default); "MainStreet O&O" / null / other →
+   *  NDA_BuyerProfile (default). Optional so existing test fixtures
+   *  (scripts/smoke-router-ai.ts, etc.) compile without modification. */
+  buyer_profile_type?: string | null;
 }
 
 /**
@@ -127,8 +129,10 @@ export interface Listing {
    *  fallback by the Lead Router when a new LEADS row's own
    *  Buyer Profile Type is empty. Lets Mark flag high-value listings
    *  (Royal Silk, Yogi International, etc.) as Institutional once and
-   *  have all future inquiries auto-route to NDA_BuyerProfile_Corporate. */
-  default_buyer_profile_type: string | null;
+   *  have all future inquiries auto-route to NDA_BuyerProfile_Corporate.
+   *  Optional so existing test fixtures (scripts/smoke-router-ai.ts, etc.)
+   *  compile without modification. */
+  default_buyer_profile_type?: string | null;
 }
 
 // ---------------------------------------------------------------------------
