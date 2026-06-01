@@ -89,6 +89,13 @@ export interface LeadContext {
    *  NDA_BuyerProfile (default). Optional so existing test fixtures
    *  (scripts/smoke-router-ai.ts, etc.) compile without modification. */
   buyer_profile_type?: string | null;
+  /** "Listing Number" property from the LEADS Notion row (the BBS Listing #
+   *  the buyer was inquiring about). When set, the matcher short-circuits
+   *  the AI fuzzy-match and hard-matches against the LISTING whose
+   *  `listing_number` field is the same — eliminates entire class of
+   *  "BBS title vs internal listing name" mismatches. Optional for legacy
+   *  fixtures. */
+  listing_number_mentioned?: string | null;
 }
 
 /**

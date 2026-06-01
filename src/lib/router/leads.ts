@@ -48,6 +48,7 @@ export async function buildLeadContextFromNotion(
     cobroker: null,
     previous_interactions_count,
     buyer_profile_type: notionLead.buyer_profile_type,
+    listing_number_mentioned: notionLead.listing_number_mentioned,
   };
 }
 

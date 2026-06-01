@@ -329,6 +329,104 @@ export async function POST(req: NextRequest) {
       body_html: rendered.html,
     });
 
+    // Phase 9 (2026-06-01): make the BUYERS dashboard immediately reflect
+    // this Email #1 send.
+    //  (a) upsert a `contacts` row keyed on buyer.email so the contact is
+    //      visible in /dashboard/leads (deduped if it already exists)
+    //  (b) upsert `deal_access` linking that contact to the matched
+    //      seller_listing — this is what populates the Deal Name column
+    //  (c) insert a `communications` row for the outbound email so the
+    //      lead drawer's Email correspondence section shows it alongside
+    //      the inbound BBS Interest email.
+    // All three are best-effort — failures here do NOT void the send
+    // (the buyer already has the email; this is just CRM bookkeeping).
+    try {
+      if (!lead.buyer_email) {
+        throw new Error('lead.buyer_email is null — cannot sync CRM rows');
+      }
+      const supabaseDb = getRouterSupabase();
+
+      // (a) Upsert contact by email (case-insensitive). Use the older row
+      // if multiple exist (matches dedup convention).
+      const buyerEmailLower = lead.buyer_email.toLowerCase().trim();
+      const { data: existingContact } = await supabaseDb
+        .from('contacts')
+        .select('id')
+        .ilike('email', buyerEmailLower)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      let buyerContactId: string | null = existingContact?.id ? String(existingContact.id) : null;
+
+      if (!buyerContactId) {
+        const { data: newContact, error: newContactErr } = await supabaseDb
+          .from('contacts')
+          .insert({
+            broker_id: ownerUserId,
+            first_name: lead.buyer_first_name,
+            last_name: lead.buyer_last_name,
+            email: lead.buyer_email,
+            phone: lead.buyer_phone,
+            source: lead.source ?? 'BizBuySell',
+            is_active: true,
+          })
+          .select('id')
+          .single();
+        if (newContactErr) {
+          console.error('[router/route] contact insert failed:', newContactErr.message);
+        } else if (newContact) {
+          buyerContactId = String(newContact.id);
+        }
+      }
+
+      if (buyerContactId && match.matched_listing_id) {
+        // (b) Upsert deal_access. Use ON CONFLICT DO NOTHING via WHERE NOT EXISTS pattern.
+        const { data: existingAccess } = await supabaseDb
+          .from('deal_access')
+          .select('id')
+          .eq('deal_id', match.matched_listing_id)
+          .eq('contact_id', buyerContactId)
+          .maybeSingle();
+
+        if (!existingAccess) {
+          await supabaseDb.from('deal_access').insert({
+            deal_id: match.matched_listing_id,
+            contact_id: buyerContactId,
+            role: 'buyer',
+            current_stage: 'inquiry',
+            nda_signed: false,
+            is_active: true,
+            granted_by: ownerUserId,
+            granted_at: new Date().toISOString(),
+          });
+        }
+
+        // (c) Insert outbound email into `communications` so lead drawer shows it.
+        // logged_by must match CommunicationSource enum: 'manual' | 'gmail_sync' | 'bbs_scrape'.
+        // 'gmail_sync' is the accurate label — the Lead Router sent this through
+        // the Gmail OAuth integration, same upstream API as gmail sync ingests.
+        await supabaseDb.from('communications').insert({
+          broker_id: ownerUserId,
+          contact_id: buyerContactId,
+          deal_id: match.matched_listing_id,
+          comm_type: 'email',
+          direction: 'outbound',
+          subject: rendered.subject,
+          body: rendered.text,
+          gmail_message_id: send.message_id,
+          gmail_thread_id: send.thread_id ?? null,
+          from_address: process.env.BROKER_EMAIL ?? 'markm@creresources.biz',
+          to_addresses: [lead.buyer_email],
+          occurred_at: new Date().toISOString(),
+          logged_by: 'gmail_sync',
+        });
+      }
+    } catch (crmErr: unknown) {
+      const msg = crmErr instanceof Error ? crmErr.message : String(crmErr);
+      console.error('[router/route] Phase 9 CRM-sync failed (non-fatal):', msg);
+    }
+
     // Compute buyer_quality from attrs (rough first pass — Mark refines later)
     const buyerQuality = deriveBuyerQualityFromAttrs(attrs);
 

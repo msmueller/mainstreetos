@@ -145,6 +145,33 @@ export async function matchListing(input: {
     return unmatchedResult('No active listings to match against.');
   }
 
+  // Hard-match on Listing Number (BBS Listing #) — short-circuits AI fuzzy
+  // matching when both the LEADS row and an active LISTING have the same
+  // BBS Listing #. Phase 8 (2026-05-26): added because the AI matcher was
+  // failing to recognize buyers who pasted a BBS title like "Heritage Silk
+  // RTW Brand | ..." as the same business as the internal listing name
+  // "Royal Silk" — even though both records carried BBS Listing #2509555.
+  if (lead.listing_number_mentioned) {
+    const target = String(lead.listing_number_mentioned).trim();
+    const hardIdx = listings.findIndex(
+      (l) => l.listing_number != null && String(l.listing_number).trim() === target
+    );
+    if (hardIdx >= 0) {
+      const matched = listings[hardIdx];
+      return {
+        matched_listing_index: hardIdx,
+        matched_listing_id: matched.id,
+        business_name: matched.name,
+        industry: matched.industry,
+        confidence: 1.0,
+        scenario: lead.previous_interactions_count > 0 ? 'returning_buyer' : 'new_buyer',
+        reasoning: `Hard-matched on Listing Number ${target} (LEADS row's "Listing Number" property === LISTING's listing_number). Bypassed AI fuzzy match.`,
+        buyer_sophistication: attrs.sophistication_level ?? 'unknown',
+        urgency_signal: attrs.urgency_level === 'unknown' ? 'low' : attrs.urgency_level,
+      };
+    }
+  }
+
   const system = await getSystemPrompt();
   const user = buildUserMessage(lead, listings, attrs);
   const raw = (await callClaudeJSON<unknown>({ system, user, maxTokens: 1024 })) as Record<
