@@ -404,8 +404,15 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Email signed copy to buyer + notification to broker
-    Promise.all([
+    // Email signed copy to buyer + notification to broker.
+    // 2026-06-01: MUST `await` — fire-and-forget Promises get killed when the
+    // Vercel serverless function returns. Earlier this morning Mark completed
+    // a test signing and received Send #1 (buyer-invite, awaited inside
+    // /api/sign/create) but neither Send #2 (sendSignedCopy) nor Send #3
+    // (sendBrokerNotification) because the lambda froze before Resend's HTTP
+    // request could complete. Same root cause as why Regis Rimbert's 8:43 AM
+    // broker-notification never arrived.
+    await Promise.all([
       sendSignedCopy({
         to:           signer.email,
         signedPdfUrl: signedUrl?.signedUrl ?? '',
