@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import type { Communication } from '@/lib/types'
+import type { SignedEnvelopeForDrawer } from './types'
 import LeadDrawer from './lead-drawer'
 
 interface LeadRow {
@@ -29,9 +30,14 @@ const fmt = (v: number | null) => {
 interface LeadsTableProps {
   leads: LeadRow[]
   communications: Communication[]
+  envelopes?: SignedEnvelopeForDrawer[]
 }
 
-export default function LeadsTable({ leads, communications: initialComms }: LeadsTableProps) {
+export default function LeadsTable({
+  leads,
+  communications: initialComms,
+  envelopes = [],
+}: LeadsTableProps) {
   const [search, setSearch] = useState('')
   const [sourceFilter, setSourceFilter] = useState('all')
   const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'inactive'>('all')
@@ -42,6 +48,25 @@ export default function LeadsTable({ leads, communications: initialComms }: Lead
     const s = new Set(leads.map(l => l.source).filter(Boolean) as string[])
     return Array.from(s).sort()
   }, [leads])
+
+  // Index envelopes by lowercased buyer_email for O(1) lookup per drawer open.
+  const envelopesByEmail = useMemo(() => {
+    const map: Record<string, SignedEnvelopeForDrawer[]> = {}
+    for (const env of envelopes) {
+      const key = (env.buyer_email || '').toLowerCase().trim()
+      if (!key) continue
+      ;(map[key] = map[key] || []).push(env)
+    }
+    // Newest envelopes first inside each bucket.
+    for (const k of Object.keys(map)) {
+      map[k].sort((a, b) => {
+        const at = a.completed_at ? new Date(a.completed_at).getTime() : 0
+        const bt = b.completed_at ? new Date(b.completed_at).getTime() : 0
+        return bt - at
+      })
+    }
+    return map
+  }, [envelopes])
 
   const filtered = useMemo(() => {
     return leads.filter(l => {
@@ -60,6 +85,9 @@ export default function LeadsTable({ leads, communications: initialComms }: Lead
   const selectedLead = selectedLeadId ? leads.find(l => l.id === selectedLeadId) : null
   const selectedComms = selectedLeadId
     ? communications.filter(c => c.contact_id === selectedLeadId)
+    : []
+  const selectedEnvelopes = selectedLead?.email
+    ? envelopesByEmail[selectedLead.email.toLowerCase().trim()] ?? []
     : []
 
   // Count communications per contact for the table
@@ -240,6 +268,7 @@ export default function LeadsTable({ leads, communications: initialComms }: Lead
         <LeadDrawer
           lead={selectedLead}
           communications={selectedComms}
+          envelopes={selectedEnvelopes}
           onClose={() => setSelectedLeadId(null)}
           onCommAdded={(comm) => {
             setCommunications(prev => [...prev, comm])

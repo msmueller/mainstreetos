@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import type { Communication } from '@/lib/types'
+import type { SignedEnvelopeForDrawer } from './types'
 import LeadsTable from './leads-table'
 import ListView, { type ColumnDef, type BulkAction } from '@/components/lists/ListView'
 import { createClient } from '@/lib/supabase/client'
@@ -32,9 +33,11 @@ const fmtDate = (iso: string | null | undefined) =>
 export default function LeadsViewSwitcher({
   leads,
   communications,
+  envelopes = [],
 }: {
   leads: LeadRow[]
   communications: Communication[]
+  envelopes?: SignedEnvelopeForDrawer[]
 }) {
   const [mode, setMode] = useState<'default' | 'table'>('default')
   const supabase = createClient()
@@ -206,7 +209,7 @@ export default function LeadsViewSwitcher({
       </div>
 
       {mode === 'default' ? (
-        <LeadsTable leads={leads} communications={communications} />
+        <LeadsTable leads={leads} communications={communications} envelopes={envelopes} />
       ) : (
         <ListView<LeadRow>
           rows={leads}

@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import type { Contact, Communication } from '@/lib/types'
+import type { SignedEnvelopeForDrawer } from './types'
 import LeadsViewSwitcher from './LeadsViewSwitcher'
 import SyncBbsButton from './sync-bbs-button'
 import TopBar from '@/components/layout/TopBar'
@@ -12,17 +13,6 @@ export const dynamic = 'force-dynamic'
 // anon client cannot generate signed URLs for these — we mint them
 // server-side with the service role key. Stays inside this route only.
 const SIGNED_URL_TTL_SECONDS = 60 * 60 // 1 hour
-
-export interface SignedEnvelopeForDrawer {
-  envelope_id: string
-  envelope_number: number
-  template_key: string
-  listing_business_name: string | null
-  completed_at: string | null
-  buyer_email: string  // contact match key
-  signed_pdf_signed_url: string | null
-  audit_pdf_signed_url: string | null
-}
 
 export default async function LeadsPage() {
   const supabase = await createClient()

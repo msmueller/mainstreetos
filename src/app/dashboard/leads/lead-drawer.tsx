@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import type { Communication, CommunicationType } from '@/lib/types'
 import { COMM_TYPE_LABELS } from '@/lib/types'
+import type { SignedEnvelopeForDrawer } from './types'
 import CommForm from './comm-form'
 
 interface LeadInfo {
@@ -20,8 +21,19 @@ interface LeadInfo {
 interface LeadDrawerProps {
   lead: LeadInfo
   communications: Communication[]
+  envelopes?: SignedEnvelopeForDrawer[]
   onClose: () => void
   onCommAdded: (comm: Communication) => void
+}
+
+// Phase 9 (2026-06-01): Display label for the template_key on each envelope.
+// Falls back to the raw key if not in the map (so newly added templates show
+// up rather than disappearing).
+const TEMPLATE_LABELS: Record<string, string> = {
+  NDA_BuyerProfile:           'NDA + Buyer Profile (Standard)',
+  NDA_BuyerProfile_Corporate: 'NDA + Buyer Profile (Institutional)',
+  NDA_BuyerProfile_MidMarket: 'NDA + Buyer Profile (Mid-Market)',
+  BuyerBrokerRep_NDA:         'Buyer-Broker Representation NDA',
 }
 
 const typeIcon: Record<CommunicationType, string> = {
@@ -65,7 +77,13 @@ function formatFullDate(iso: string) {
   })
 }
 
-export default function LeadDrawer({ lead, communications, onClose, onCommAdded }: LeadDrawerProps) {
+export default function LeadDrawer({
+  lead,
+  communications,
+  envelopes = [],
+  onClose,
+  onCommAdded,
+}: LeadDrawerProps) {
   const [showForm, setShowForm] = useState(false)
   const [typeFilter, setTypeFilter] = useState<CommunicationType | 'all'>('all')
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -163,6 +181,72 @@ export default function LeadDrawer({ lead, communications, onClose, onCommAdded 
             ))}
           </div>
         </div>
+
+        {/* Documents (signed NDA + audit certificate per envelope) */}
+        {envelopes.length > 0 && (
+          <div className="border-b border-slate-200 px-5 py-4 bg-slate-50/60">
+            <h4 className="text-xs font-semibold tracking-wide text-slate-600 uppercase mb-2">
+              Signed Documents
+            </h4>
+            <div className="space-y-2">
+              {envelopes.map((env) => {
+                const tplLabel = TEMPLATE_LABELS[env.template_key] ?? env.template_key
+                const dateLabel = env.completed_at
+                  ? new Date(env.completed_at).toLocaleString('en-US', {
+                      month: 'short', day: 'numeric', year: 'numeric',
+                      hour: 'numeric', minute: '2-digit',
+                    })
+                  : 'Completed'
+                return (
+                  <div
+                    key={env.envelope_id}
+                    className="rounded-lg border border-slate-200 bg-white p-3"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-slate-900 truncate">
+                          {env.listing_business_name || 'Listing'}
+                          <span className="text-slate-400 font-normal"> · #{env.envelope_number}</span>
+                        </p>
+                        <p className="text-xs text-slate-500 truncate">{tplLabel}</p>
+                        <p className="text-xs text-slate-400 mt-0.5">{dateLabel}</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2 mt-2.5">
+                      {env.signed_pdf_signed_url ? (
+                        <a
+                          href={env.signed_pdf_signed_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 transition"
+                        >
+                          📄 Signed NDA
+                        </a>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-slate-100 text-slate-400">
+                          📄 Signed NDA (unavailable)
+                        </span>
+                      )}
+                      {env.audit_pdf_signed_url ? (
+                        <a
+                          href={env.audit_pdf_signed_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 transition"
+                        >
+                          🧾 Audit Certificate
+                        </a>
+                      ) : null}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            <p className="text-[10px] text-slate-400 mt-2">
+              Download links expire 1 hour after this page loads. Reload to refresh.
+            </p>
+          </div>
+        )}
 
         {/* Timeline */}
         <div className="flex-1 overflow-y-auto p-5">
