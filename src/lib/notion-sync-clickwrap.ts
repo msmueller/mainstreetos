@@ -15,7 +15,10 @@
  *      Notion does not allow direct upload via API.)
  *   4. Append a comment to the lead page with a one-line "✓ NDA signed by …"
  *      summary including both URLs.
- *   5. Leave Status and Status Update alone — Mark progresses stages manually.
+ *   5. Auto-advance Pipeline Stage → "3. NDA Executed" and Status Update →
+ *      "2. PROSPECT" on signing completion. (Updated 2026-06-01: Mark
+ *      reversed the prior "leave stages alone" decision now that buyer
+ *      signing is reliable enough to trust as a stage advancement signal.)
  *
  * Required env: NOTION_API_KEY
  *
@@ -56,7 +59,11 @@ export async function syncCompletedSignatureToNotion(
     signerEmail, signerName,
   } = input;
 
-  if (templateKey !== 'NDA_BuyerProfile') {
+  // Phase 8 (2026-06-01): NDA_BuyerProfile_Corporate uses the same Notion
+  // LEADS property set as NDA_BuyerProfile (only the buyer_profile_section
+  // depth differs), so both templates flow through the same mapping.
+  const KNOWN_SELL_SIDE_TEMPLATES = ['NDA_BuyerProfile', 'NDA_BuyerProfile_Corporate'];
+  if (!KNOWN_SELL_SIDE_TEMPLATES.includes(templateKey)) {
     console.warn(`[notion-sync] templateKey '${templateKey}' has no mapping yet; skipping property update.`);
     return;
   }
@@ -107,8 +114,12 @@ function buildPropertyPatch(args: {
   const { fieldValues: v, signedPdfUrl, auditPdfUrl, completedAt } = args;
   const patch: Record<string, any> = {};
 
-  // 1. Always check the Completed NDA checkbox.
+  // 1. Always check the Completed NDA checkbox + auto-advance stages.
   patch['Completed NDA'] = { checkbox: true };
+  patch['Pipeline Stage'] = { select: { name: '3. NDA Executed' } };
+  patch['Status Update'] = { status: { name: '2. PROSPECT' } };
+  // Date NDA Signed defaults to the completion timestamp (date portion only).
+  patch['Date NDA Signed'] = { date: { start: String(completedAt).slice(0, 10) } };
 
   // 2. Direct text-style fields — only set when the buyer provided a value.
   if (text(v.buyer_address)) {

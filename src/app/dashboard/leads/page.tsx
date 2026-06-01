@@ -24,9 +24,14 @@ export default async function LeadsPage() {
   let accessRows: any[] = []
 
   if (contactIds.length > 0) {
+    // 2026-06-01: deal_access.deal_id references seller_listings.id (no
+    // `deals` table exists in the schema — the prior `deals(listing_name)`
+    // join was returning null for every row, so Deal Name showed "—" for
+    // all 161 buyers). Use `seller_listings(name)` to surface the canonical
+    // short listing name (e.g., "Royal Silk") as the Deal Name.
     const { data } = await supabase
       .from('deal_access')
-      .select('contact_id, nda_signed, deal_id, deals(listing_name)')
+      .select('contact_id, nda_signed, deal_id, seller_listings(name)')
       .in('contact_id', contactIds)
 
     accessRows = (data || [])
@@ -37,10 +42,10 @@ export default async function LeadsPage() {
     const access = accessRows.filter((a: any) => a.contact_id === c.id)
     const dealNames = access
       .map((a: any) => {
-        const d = a.deals
+        const d = a.seller_listings
         if (!d) return null
-        if (Array.isArray(d)) return d[0]?.listing_name
-        return d.listing_name
+        if (Array.isArray(d)) return d[0]?.name
+        return d.name
       })
       .filter((name: any): name is string => !!name)
     // Deduplicate
