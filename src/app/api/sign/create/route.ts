@@ -18,10 +18,12 @@
  *
  * Body:
  *   {
- *     "templateKey": "NDA_BuyerProfile",
- *     "notionLeadId": "abc123",
- *     "notionListingId": "xyz789",
- *     "buyer": { "email": "buyer@example.com", "name": "John Smith", "phone": "+1-555-1234" }
+ *     "templateKey": "NDA_BuyerProfile",   // optional or 'auto' — derived from
+ *                                          // the lead's Buyer Type when omitted
+ *     "notionLeadId": "abc123",            // REQUIRED for sell-side NDA templates
+ *     "notionListingId": "xyz789",         // REQUIRED for sell-side NDA templates
+ *     "buyer": { "email": "buyer@example.com", "name": "John Smith", "phone": "+1-555-1234" },
+ *     "allowUnlinked": false               // true ONLY for deliberate test envelopes
  *   }
  */
 
@@ -80,30 +82,66 @@ export async function POST(req: NextRequest) {
                               // NDA preamble + §5 + signature block.
     buyer,
     suppressAutoEmail,
+    allowUnlinked,            // Build B: explicit opt-out of lead-linkage
+                              // enforcement for DELIBERATE test envelopes only.
   } = body;
 
-  if (!templateKey || !buyer?.email) {
-    return json({ error: 'templateKey and buyer.email are required' }, 400);
+  if (!buyer?.email) {
+    return json({ error: 'buyer.email is required' }, 400);
   }
   if (!isValidEmail(buyer.email)) {
     return json({ error: 'invalid buyer email' }, 400);
+  }
+  if (!templateKey && !notionLeadId) {
+    return json({ error: 'templateKey is required when no notionLeadId is provided' }, 400);
   }
 
   const attribution = attributionFromRequest(req);
 
   try {
+    // ----- 0. Resolve effective template key (Build B, 2026-07-02) ---------
+    // When the caller omits templateKey (or passes 'auto'), derive it from
+    // the lead's Buyer Type per integration-spec §5:
+    //   Owner-Operator / Search Fund / Family Office / Internal Buyer
+    //     → NDA_BuyerProfile (v2, individual)
+    //   Strategic Buyer / Private Equity
+    //     → NDA_BuyerProfile_Corporate (v1, corporate/institutional)
+    // (The Lead Router keeps its own Buyer Profile Type mapping and always
+    //  passes an explicit templateKey — this is the fallback for direct
+    //  callers like SendNdaButton.)
+    const effectiveTemplateKey: string =
+      (!templateKey || templateKey === 'auto')
+        ? await deriveTemplateKeyFromBuyerType(notionLeadId)
+        : templateKey;
+
+    // ----- 0a. Enforce Notion linkage at mint (Build B) ---------------------
+    // Root cause of the "link-back looked broken" audit: 9 of 10 completed
+    // envelopes had no notion_lead_id. Sell-side NDA envelopes MUST carry
+    // both IDs so the completion → Notion write-back can fire. Test envelopes
+    // must opt out explicitly with allowUnlinked: true.
+    const SELL_SIDE_NDA_TEMPLATES = ['NDA_BuyerProfile', 'NDA_BuyerProfile_Corporate'];
+    const isSellSideNda = SELL_SIDE_NDA_TEMPLATES.includes(effectiveTemplateKey);
+    if (isSellSideNda && !allowUnlinked && (!notionLeadId || !notionListingId)) {
+      return json({
+        error: 'notionLeadId and notionListingId are required for sell-side NDA envelopes',
+        detail:
+          'The completion → Notion LEAD write-back depends on this linkage. ' +
+          'For a deliberate test envelope, pass allowUnlinked: true.',
+      }, 400);
+    }
+
     // ----- 1. Resolve template (latest active version) ---------------------
     const { data: template, error: tplErr } = await supabase
       .from('sign_templates')
       .select('id, template_key, version, fields_schema, source_sha256, disclosure_version_id')
-      .eq('template_key', templateKey)
+      .eq('template_key', effectiveTemplateKey)
       .eq('active', true)
       .order('version', { ascending: false })
       .limit(1)
       .single();
 
     if (tplErr || !template) {
-      return json({ error: `template not found: ${templateKey}` }, 404);
+      return json({ error: `template not found: ${effectiveTemplateKey}` }, 404);
     }
 
     const { data: disclosure } = await supabase
@@ -118,7 +156,7 @@ export async function POST(req: NextRequest) {
     // 'Main Street Buyer Profile — Intake Form' DB. These never share data
     // — System 1 has a specific listing context; System 3 has no listing
     // (the outbound form is reusable across many Sellers).
-    const isPhase7BuyerRep = templateKey === 'BuyerBrokerRep_NDA';
+    const isPhase7BuyerRep = effectiveTemplateKey === 'BuyerBrokerRep_NDA';
 
     const listingFields: Record<string, string> = (!isPhase7BuyerRep && notionListingId)
       ? await fetchListingPrefill(notionListingId)
@@ -316,6 +354,26 @@ function json(body: any, status = 200) {
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+/** Build B (2026-07-02): derive the NDA template from the lead's Buyer Type
+ *  (LEADS select property, verified live). Corporate/institutional buyer
+ *  types route to the Corporate template; everything else (including a
+ *  missing/unset Buyer Type) safely defaults to the standard v2 template. */
+const CORPORATE_BUYER_TYPES = ['Strategic Buyer', 'Private Equity'];
+
+async function deriveTemplateKeyFromBuyerType(leadPageId?: string): Promise<string> {
+  if (!leadPageId) return 'NDA_BuyerProfile';
+  try {
+    const page: any = await notion.pages.retrieve({ page_id: leadPageId });
+    const buyerType: string = page?.properties?.['Buyer Type']?.select?.name ?? '';
+    return CORPORATE_BUYER_TYPES.includes(buyerType)
+      ? 'NDA_BuyerProfile_Corporate'
+      : 'NDA_BuyerProfile';
+  } catch (err: any) {
+    console.error('[sign/create] Buyer Type lookup failed; defaulting to NDA_BuyerProfile:', err.message);
+    return 'NDA_BuyerProfile';
+  }
 }
 
 /** Read listing properties from Notion LISTINGS and project to prefill field names.

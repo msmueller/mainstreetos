@@ -43,7 +43,10 @@ export type Listing = {
 export type SendNdaButtonProps = {
   lead: Lead;
   listing: Listing;
-  templateKey?: string;     // default 'NDA_BuyerProfile'
+  /** Optional override. When omitted, /api/sign/create derives the template
+   *  from the lead's Buyer Type (Build B): Strategic Buyer / Private Equity →
+   *  NDA_BuyerProfile_Corporate; everything else → NDA_BuyerProfile v2. */
+  templateKey?: string;
   /** Called after a successful send, with the envelope number, so the parent can refresh. */
   onSent?: (envelopeNumber: number) => void;
   /** Override the button label. Default: "Send NDA". */
@@ -57,7 +60,9 @@ export type SendNdaButtonProps = {
 export default function SendNdaButton({
   lead,
   listing,
-  templateKey = 'NDA_BuyerProfile',
+  // Build B (2026-07-02): no more hardcoded 'NDA_BuyerProfile' default —
+  // undefined lets the server pick the template from the lead's Buyer Type.
+  templateKey,
   onSent,
   label = 'Send NDA',
 }: SendNdaButtonProps) {
@@ -103,7 +108,9 @@ export default function SendNdaButton({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          templateKey,
+          // Only sent when explicitly overridden; otherwise the server derives
+          // it from the lead's Buyer Type (spec §5 mapping).
+          ...(templateKey ? { templateKey } : {}),
           notionLeadId: lead.id,
           notionListingId: listing.id,
           buyer: {
