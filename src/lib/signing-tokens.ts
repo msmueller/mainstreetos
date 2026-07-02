@@ -74,6 +74,21 @@ export function buildSigningUrl(rawToken: string): string {
   return `${baseUrl}/sign/${rawToken}`;
 }
 
+/** Build the durable download URL for a completed envelope's signed PDF or
+ *  audit certificate (served by /api/sign/download/[envelopeId]/[doc], which
+ *  re-signs storage on each click). This is what gets written to the Notion
+ *  LEAD "Signed NDA URL" property — unlike storage signed URLs it never
+ *  expires. `k` is a capability key: the first 16 hex chars of the document's
+ *  SHA-256. Shared by the completion path and the backfill (Build A). */
+export function buildDurableDownloadUrl(args: {
+  envelopeId: string;
+  doc: 'nda' | 'audit';
+  sha256: string;
+}): string {
+  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://mainstreetos.biz').replace(/\/+$/, '');
+  return `${baseUrl}/api/sign/download/${args.envelopeId}/${args.doc}?k=${args.sha256.slice(0, 16)}`;
+}
+
 // ----------------------------------------------------------------------------
 // Token validation (no DB access — pure shape check)
 // ----------------------------------------------------------------------------
