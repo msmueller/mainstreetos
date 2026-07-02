@@ -39,7 +39,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { hashSigningToken, isWellFormedToken, sha256Hex } from '@/lib/signing-tokens';
+import { hashSigningToken, isWellFormedToken, sha256Hex, buildDurableDownloadUrl } from '@/lib/signing-tokens';
 import { logEvent, attributionFromRequest } from '@/lib/audit-log';
 import { renderSignedPdf, renderAuditCertificate } from '@/lib/render-pdf';
 import { syncCompletedSignatureToNotion } from '@/lib/notion-sync-clickwrap';
@@ -95,8 +95,8 @@ export async function POST(req: NextRequest) {
       id, envelope_id, role, email, name, status,
       token_expires_at, token_consumed_at,
       sign_envelopes!inner (
-        id, envelope_number, status, template_id, template_version, filled_values,
-        notion_lead_id, notion_listing_id, listing_business_name,
+        id, envelope_number, status, template_id, template_key, template_version, filled_values,
+        notion_lead_id, notion_listing_id, notion_synced_at, listing_business_name,
         sign_templates!inner ( id, source, source_sha256, fields_schema, disclosure_version_id )
       )
     `)
@@ -386,19 +386,37 @@ export async function POST(req: NextRequest) {
       .from('audit-certificates')
       .createSignedUrl(auditPdfPath, 60 * 60 * 24 * 365);
 
-    // Sync to Notion (best-effort; don't block on failure)
-    if (envelope.notion_lead_id) {
+    // Sync to Notion (best-effort; don't block on failure).
+    // Build A (2026-07-02): feature-flagged (NDA_NOTION_SYNC, checked inside
+    // the sync), idempotent (guard on notion_synced_at; stamped only on
+    // success so the backfill/reconciler can retry failures), and passes the
+    // envelope's ACTUAL template_key (was hardcoded 'NDA_BuyerProfile').
+    if (envelope.notion_lead_id && !envelope.notion_synced_at) {
       try {
-        await syncCompletedSignatureToNotion({
+        const syncResult = await syncCompletedSignatureToNotion({
           notionPageId:    envelope.notion_lead_id,
-          templateKey:     'NDA_BuyerProfile',
+          templateKey:     envelope.template_key,
           fieldValues:     body.fieldValues,
           signedPdfUrl:    signedUrl?.signedUrl ?? '',
           auditPdfUrl:     auditUrl?.signedUrl ?? '',
+          signedNdaDurableUrl: buildDurableDownloadUrl({
+            envelopeId: envelope.id,
+            doc:        'nda',
+            sha256:     signedPdfHash,
+          }),
           completedAt:     new Date().toISOString(),
           signerEmail:     signer.email,
           signerName:      body.typedSignature,
         });
+
+        if (syncResult.ok) {
+          // Conditional stamp (…IS NULL) guards against a racing reconciler.
+          await supabase
+            .from('sign_envelopes')
+            .update({ notion_synced_at: new Date().toISOString() })
+            .eq('id', envelope.id)
+            .is('notion_synced_at', null);
+        }
       } catch (notionErr: any) {
         console.error('[sign/execute] notion sync failed (non-fatal):', notionErr.message);
       }
