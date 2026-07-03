@@ -15,11 +15,21 @@
  *     listing still works so the candidate set can be inspected pre-enable.
  *   - Recency guard: only leads CREATED in the last LOOKBACK_DAYS (3). Old
  *     leads sitting at "1. Inquiry" from before automation never get blasted.
- *   - Candidate filter: Lead Type = Buyer Lead, Email present, Completed NDA
- *     unchecked, LEAD Email #1 not yet stamped, Pipeline Stage = "1. Inquiry"
- *     (or still empty).
+ *   - Candidate filter: BBS Email Type = "New Listing Lead" (REQUIRED — leads
+ *     from "Your NDA has been signed" or "New broker directory lead" emails,
+ *     or with the field unset, are NEVER auto-routed; 2026-07-02 decision),
+ *     Lead Type = Buyer Lead, Email present, Completed NDA unchecked,
+ *     NDA Received (BBS-side NDA) unchecked, LEAD Email #1 not yet stamped,
+ *     Pipeline Stage = "1. Inquiry" (or still empty).
  *   - Cap: at most MAX_PER_RUN (5) leads routed per run.
  *   - ?dry_run=true forwards the Router's own dry-run (no emails, no writes).
+ *
+ * SECOND LEG — manual "NDA Send" trigger: leads where Mark sets
+ * Email Type to Send = "NDA Send" get a click-wrap invitation email (the
+ * combined Buyer Profile + NDA signing session) via /api/sign/mint-for-lead
+ * with send_email:true. Works for broker-directory leads and BBS-NDA-signed
+ * leads alike. After each attempt the select is CLEARED and the outcome is
+ * written to Next Action, so a failed attempt never retries silently forever.
  *
  * Auth: either the Vercel cron header (Authorization: Bearer CRON_SECRET) or
  * x-router-secret (ROUTER_SECRET) for manual invocation/testing.
@@ -62,10 +72,14 @@ export async function GET(req: NextRequest) {
       page_size: 25,
       filter: {
         and: [
+          // Only leads born from a BBS "You have a new listing lead" email.
+          // "NDA Signed" / "Broker Directory Lead" / unset → never auto-routed.
+          { property: 'BBS Email Type', select: { equals: 'New Listing Lead' } },
           { timestamp: 'created_time', created_time: { on_or_after: since } },
           { property: 'Lead Type', select: { equals: 'Buyer Lead' } },
           { property: 'Email', email: { is_not_empty: true } },
           { property: 'Completed NDA', checkbox: { equals: false } },
+          { property: 'NDA Received', checkbox: { equals: false } },
           { property: 'LEAD Email #1', date: { is_empty: true } },
           {
             or: [
@@ -114,6 +128,73 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // ===========================================================================
+  // SECOND LEG — manual "NDA Send" trigger (Email Type to Send = 'NDA Send')
+  // ===========================================================================
+  const manualResults: any[] = [];
+  try {
+    const manualRes: any = await (notion as any).dataSources.query({
+      data_source_id: LEADS_DATA_SOURCE_ID,
+      page_size: MAX_PER_RUN,
+      filter: {
+        and: [
+          { property: 'Email Type to Send', select: { equals: 'NDA Send' } },
+          { property: 'Email', email: { is_not_empty: true } },
+          { property: 'Completed NDA', checkbox: { equals: false } },
+        ],
+      },
+    });
+
+    for (const page of manualRes.results ?? []) {
+      const name = (page.properties?.['Lead Name']?.title ?? [])
+        .map((t: any) => t.plain_text).join('') || '(untitled)';
+
+      if (dryRun) {
+        manualResults.push({ lead: name, notion_lead_page_id: page.id, status: 'would_send_nda_invitation' });
+        continue;
+      }
+
+      let outcome = '';
+      try {
+        const mintRes = await fetch(`${baseUrl}/api/sign/mint-for-lead`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-router-secret': process.env.ROUTER_SECRET!,
+          },
+          body: JSON.stringify({ notion_lead_page_id: page.id, send_email: true }),
+        });
+        const mintBody = await mintRes.json().catch(() => ({}));
+        outcome = mintRes.ok
+          ? `✓ NDA/Buyer Profile invitation emailed — envelope #${mintBody.envelopeNumber}`
+          : `✗ NDA Send failed: ${mintBody.error ?? mintRes.status}${mintBody.detail ? ` — ${mintBody.detail}` : ''}`;
+        manualResults.push({ lead: name, notion_lead_page_id: page.id, status: mintRes.ok ? 'sent' : 'failed', detail: mintBody.error ?? undefined });
+      } catch (err: any) {
+        outcome = `✗ NDA Send errored: ${err.message}`;
+        manualResults.push({ lead: name, notion_lead_page_id: page.id, status: 'error', detail: err.message });
+      }
+
+      // Always clear the trigger select and record the outcome — success or
+      // failure — so a bad lead never silently retries every 10 minutes.
+      try {
+        await notion.pages.update({
+          page_id: page.id,
+          properties: {
+            'Email Type to Send': { select: null },
+            'Next Action': {
+              rich_text: [{ text: { content: `${outcome} (${new Date().toISOString().slice(0, 10)})` } }],
+            },
+          } as any,
+        });
+      } catch (clearErr: any) {
+        console.error('[auto-route] failed to clear NDA Send trigger:', clearErr.message);
+      }
+    }
+  } catch (err: any) {
+    console.error('[auto-route] manual NDA Send query failed:', err.message);
+    manualResults.push({ status: 'query_error', detail: err.message });
+  }
+
   return json({
     enabled: flagOn,
     dry_run: dryRun,
@@ -121,6 +202,7 @@ export async function GET(req: NextRequest) {
     candidates_found: candidates.length,
     processed: results.length,
     results,
+    manual_nda_sends: manualResults,
   });
 }
 

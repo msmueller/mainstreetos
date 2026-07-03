@@ -56,6 +56,10 @@ export async function POST(req: NextRequest) {
     notion_listing_page_id?: string;
     template_key?: string;
     force?: boolean;
+    /** true → /api/sign/create sends its own signing-invitation email to the
+     *  buyer (manual "NDA Send" trigger). Default false: caller (Responder)
+     *  embeds the returned signingUrl in its own email. */
+    send_email?: boolean;
   };
   try {
     body = await req.json();
@@ -140,7 +144,7 @@ export async function POST(req: NextRequest) {
         notionLeadId: leadPageId,
         notionListingId: listingPageId,
         buyer: { email: buyerEmail, name: buyerName, phone: buyerPhone },
-        suppressAutoEmail: true,
+        suppressAutoEmail: !body.send_email,
       }),
     });
 
