@@ -20,30 +20,21 @@
  *  10. Scroll completion event exists in audit log
  *  11. IP/UA reasonably consistent with envelope.opened event (warn, not block)
  *
- * If ALL gates pass:
- *   - Render the signed PDF (with buyer's typed/drawn signature)
- *   - Hash the PDF
- *   - Render the audit certificate PDF
- *   - Hash the audit certificate
- *   - Upload both to Supabase Storage
- *   - Insert sign_signatures row
- *   - Update envelope to 'completed'
- *   - Mark token consumed
- *   - Log envelope.signed event
- *   - Sync to Notion (lead status, attached PDF)
- *   - Email buyer their signed copy
- *   - Return success with download URL
+ * If ALL gates pass, the signature is recorded by the shared completion core
+ * (lib/complete-signing.ts) — identical logic to the public
+ * /api/nda-public-start path: render signed PDF + audit certificate, hash and
+ * upload both, insert sign_signatures, flip signer + envelope to
+ * signed/completed, log the signing events, sync to Notion (Build A), and
+ * email the buyer + broker.
  *
  * Place at: app/api/sign/execute/route.ts
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { hashSigningToken, isWellFormedToken, sha256Hex, buildDurableDownloadUrl } from '@/lib/signing-tokens';
+import { hashSigningToken, isWellFormedToken, sha256Hex } from '@/lib/signing-tokens';
 import { logEvent, attributionFromRequest } from '@/lib/audit-log';
-import { renderSignedPdf, renderAuditCertificate } from '@/lib/render-pdf';
-import { syncCompletedSignatureToNotion } from '@/lib/notion-sync-clickwrap';
-import { sendSignedCopy, sendBrokerNotification } from '@/lib/email';
+import { completeSigning } from '@/lib/complete-signing';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -265,191 +256,42 @@ export async function POST(req: NextRequest) {
       attribution,
     });
 
-    // Render signed PDF
-    const signedPdfBuffer = await renderSignedPdf({
-      template:          template.source,
-      filledValues:      mergedValues,
-      buyerTypedSignature: body.typedSignature,
-      buyerDrawnSignatureSvg: body.drawnSignatureSvg,
-      signedAt:          new Date(),
-      signerEmail:       signer.email,
-      signerIp:          attribution.ipAddress,
-      envelopeNumber:    envelope.envelope_number,
-    });
-    const signedPdfHash = sha256Hex(signedPdfBuffer);
-
-    // Upload signed PDF
-    const signedPdfPath = `${envelope.id}/${signedPdfHash.slice(0, 8)}_signed.pdf`;
-    const { error: upErr } = await supabase.storage
-      .from('signed-documents')
-      .upload(signedPdfPath, signedPdfBuffer, { contentType: 'application/pdf' });
-    if (upErr) throw new Error(`signed PDF upload failed: ${upErr.message}`);
-
-    // Render audit certificate (queries sign_events for full chronology)
-    const auditPdfBuffer = await renderAuditCertificate({
-      envelopeId:     envelope.id,
-      envelopeNumber: envelope.envelope_number,
-      signedPdfHash,
-    });
-    const auditPdfHash = sha256Hex(auditPdfBuffer);
-
-    const auditPdfPath = `${envelope.id}/${auditPdfHash.slice(0, 8)}_audit.pdf`;
-    const { error: auErr } = await supabase.storage
-      .from('audit-certificates')
-      .upload(auditPdfPath, auditPdfBuffer, { contentType: 'application/pdf' });
-    if (auErr) throw new Error(`audit PDF upload failed: ${auErr.message}`);
-
-    // Log the signing event (this is THE legal moment)
-    const signingEventId = await logEvent({
-      envelopeId:       envelope.id,
-      signerId:         signer.id,
-      eventType:        'signer.signed',
-      documentSha256:   signedPdfHash,
-      disclosureSha256: disclosure.text_sha256,
-      attribution,
-      payload: {
-        method:           body.signatureMethod,
-        typed_name:       body.typedSignature,
-        has_drawn:        !!body.drawnSignatureSvg,
-        consent_event_id: body.consentGivenEventId,
-        validation_event_id: validationEventId,
-      },
-    });
-
-    if (!signingEventId) {
-      throw new Error('failed to log signing event');
-    }
-
-    // Insert signature record
-    const { error: sigErr } = await supabase
-      .from('sign_signatures')
-      .insert({
-        envelope_id:           envelope.id,
-        signer_id:             signer.id,
-        signature_method:      body.signatureMethod,
-        typed_name:            body.typedSignature,
-        drawn_signature_svg:   body.drawnSignatureSvg ?? null,
-        document_sha256:       signedPdfHash,
-        template_id:           template.id,
+    // Record the signature via the shared completion core. Identical logic to
+    // the public /api/nda-public-start path (render → upload → sign_signatures
+    // → complete envelope → Notion sync → emails), so the legal artifact is
+    // produced the same way regardless of how the buyer arrived.
+    const result = await completeSigning({
+      envelope: {
+        id:                    envelope.id,
+        envelope_number:       envelope.envelope_number,
+        template_key:          envelope.template_key,
         template_version:      envelope.template_version,
-        disclosure_version_id: disclosure.id,
-        disclosure_sha256:     disclosure.text_sha256,
-        consent_event_id:      body.consentGivenEventId,
-        signer_email:          signer.email,
-        signer_ip:             attribution.ipAddress ?? null,
-        signer_user_agent:     attribution.userAgent ?? null,
-        signer_geolocation:    attribution.geolocation ?? null,
-        signing_session_id:    body.sessionId,
-        signing_event_id:      signingEventId,
-      });
-
-    if (sigErr) throw new Error(`signature insert failed: ${sigErr.message}`);
-
-    // Mark signer as signed, consume token
-    await supabase
-      .from('sign_signers')
-      .update({
-        status:            'signed',
-        signed_at:         new Date().toISOString(),
-        token_consumed_at: new Date().toISOString(),
-      })
-      .eq('id', signer.id);
-
-    // Update envelope: completed (all signers signed)
-    await supabase
-      .from('sign_envelopes')
-      .update({
-        status:             'completed',
-        completed_at:       new Date().toISOString(),
-        signed_pdf_path:    signedPdfPath,
-        signed_pdf_sha256:  signedPdfHash,
-        audit_pdf_path:     auditPdfPath,
-        audit_pdf_sha256:   auditPdfHash,
-      })
-      .eq('id', envelope.id);
-
-    // Log envelope.signed
-    await logEvent({
-      envelopeId:     envelope.id,
-      eventType:      'envelope.signed',
-      documentSha256: signedPdfHash,
+        filled_values:         envelope.filled_values,
+        notion_lead_id:        envelope.notion_lead_id,
+        notion_listing_id:     envelope.notion_listing_id,
+        notion_synced_at:      envelope.notion_synced_at,
+        listing_business_name: envelope.listing_business_name,
+      },
+      signer:     { id: signer.id, email: signer.email },
+      template:   { id: template.id, source: template.source },
+      disclosure: { id: disclosure.id, text_sha256: disclosure.text_sha256 },
+      mergedValues,
+      buyerFieldValues:  body.fieldValues,
+      signatureMethod:   body.signatureMethod,
+      typedSignature:    body.typedSignature,
+      drawnSignatureSvg: body.drawnSignatureSvg,
+      sessionId:         body.sessionId,
+      consentEventId:    body.consentGivenEventId,
+      validationEventId,
       attribution,
-      payload:        { audit_pdf_hash: auditPdfHash },
+      signerName:        body.typedSignature,
     });
-
-    // Get signed URLs for downloads (1 year)
-    const { data: signedUrl } = await supabase.storage
-      .from('signed-documents')
-      .createSignedUrl(signedPdfPath, 60 * 60 * 24 * 365);
-
-    const { data: auditUrl } = await supabase.storage
-      .from('audit-certificates')
-      .createSignedUrl(auditPdfPath, 60 * 60 * 24 * 365);
-
-    // Sync to Notion (best-effort; don't block on failure).
-    // Build A (2026-07-02): feature-flagged (NDA_NOTION_SYNC, checked inside
-    // the sync), idempotent (guard on notion_synced_at; stamped only on
-    // success so the backfill/reconciler can retry failures), and passes the
-    // envelope's ACTUAL template_key (was hardcoded 'NDA_BuyerProfile').
-    if (envelope.notion_lead_id && !envelope.notion_synced_at) {
-      try {
-        const syncResult = await syncCompletedSignatureToNotion({
-          notionPageId:    envelope.notion_lead_id,
-          templateKey:     envelope.template_key,
-          fieldValues:     body.fieldValues,
-          signedPdfUrl:    signedUrl?.signedUrl ?? '',
-          auditPdfUrl:     auditUrl?.signedUrl ?? '',
-          signedNdaDurableUrl: buildDurableDownloadUrl({
-            envelopeId: envelope.id,
-            doc:        'nda',
-            sha256:     signedPdfHash,
-          }),
-          completedAt:     new Date().toISOString(),
-          signerEmail:     signer.email,
-          signerName:      body.typedSignature,
-        });
-
-        if (syncResult.ok) {
-          // Conditional stamp (…IS NULL) guards against a racing reconciler.
-          await supabase
-            .from('sign_envelopes')
-            .update({ notion_synced_at: new Date().toISOString() })
-            .eq('id', envelope.id)
-            .is('notion_synced_at', null);
-        }
-      } catch (notionErr: any) {
-        console.error('[sign/execute] notion sync failed (non-fatal):', notionErr.message);
-      }
-    }
-
-    // Email signed copy to buyer + notification to broker.
-    // 2026-06-01: MUST `await` — fire-and-forget Promises get killed when the
-    // Vercel serverless function returns. Earlier this morning Mark completed
-    // a test signing and received Send #1 (buyer-invite, awaited inside
-    // /api/sign/create) but neither Send #2 (sendSignedCopy) nor Send #3
-    // (sendBrokerNotification) because the lambda froze before Resend's HTTP
-    // request could complete. Same root cause as why Regis Rimbert's 8:43 AM
-    // broker-notification never arrived.
-    await Promise.all([
-      sendSignedCopy({
-        to:           signer.email,
-        signedPdfUrl: signedUrl?.signedUrl ?? '',
-        businessName: envelope.listing_business_name ?? 'the listing',
-      }).catch((e: any) => console.error('[sign/execute] buyer email failed:', e.message)),
-      sendBrokerNotification({
-        envelopeNumber: envelope.envelope_number,
-        signerEmail:    signer.email,
-        signerName:     body.typedSignature,
-        businessName:   envelope.listing_business_name ?? 'the listing',
-        signedPdfUrl:   signedUrl?.signedUrl ?? '',
-      }).catch((e: any) => console.error('[sign/execute] broker email failed:', e.message)),
-    ]);
 
     return json({
       ok:             true,
-      envelopeNumber: envelope.envelope_number,
-      signedPdfUrl:   signedUrl?.signedUrl,
-      auditPdfUrl:    auditUrl?.signedUrl,
+      envelopeNumber: result.envelopeNumber,
+      signedPdfUrl:   result.signedPdfUrl,
+      auditPdfUrl:    result.auditPdfUrl,
     });
   } catch (err: any) {
     console.error('[sign/execute] signature recording failed:', err);

@@ -197,6 +197,67 @@ export async function sendBrokerNotification(args: {
 }
 
 // ============================================================================
+// 4. Email OTP — sent to a public "Start NDA" visitor to verify their address
+// ============================================================================
+
+/**
+ * One-time verification code for the per-listing public Start NDA page.
+ * The public visitor is unauthenticated (name + email only), so before we mint
+ * a legally binding envelope we confirm they control the email address by
+ * sending this code and requiring it back. Pairs with the Turnstile bot check
+ * in lib/anti-abuse.ts.
+ */
+export async function sendOtpEmail(args: {
+  to: string;
+  code: string;
+  businessName: string;
+  ttlMinutes?: number;
+}): Promise<void> {
+  const { to, code, businessName, ttlMinutes = 10 } = args;
+
+  const subject = `Your verification code: ${code} — ${businessName}`;
+
+  const html = layout({
+    title: 'Verify your email to continue',
+    body: `
+      <p>Use the code below to verify your email address and continue to the
+      Non-Disclosure Agreement for <strong>${escapeHtml(businessName)}</strong>.</p>
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;">
+        <tr>
+          <td style="background:${PAPER_WARM};border:1px solid ${RULE};border-radius:2px;padding:18px 28px;font-family:'Courier New',monospace;font-size:32px;letter-spacing:0.35em;color:${INK};font-weight:700;">
+            ${escapeHtml(code)}
+          </td>
+        </tr>
+      </table>
+      <p style="font-size:14px;color:${INK_SOFT};margin-top:8px;">
+        This code expires in ${ttlMinutes} minutes and can be used once. If you
+        did not request it, you can safely ignore this email — no agreement is
+        created unless the code is entered.
+      </p>
+      <p>Best regards,<br/>
+      <strong>Mark Mueller</strong><br/>
+      CRE Resources, LLC</p>
+    `,
+  });
+
+  const text = [
+    `Your verification code for ${businessName}:`,
+    '',
+    `    ${code}`,
+    '',
+    `This code expires in ${ttlMinutes} minutes and can be used once.`,
+    'If you did not request it, you can safely ignore this email — no agreement',
+    'is created unless the code is entered.',
+    '',
+    'Best regards,',
+    'Mark Mueller',
+    'CRE Resources, LLC',
+  ].join('\n');
+
+  await send({ to, subject, html, text });
+}
+
+// ============================================================================
 // Internal helpers
 // ============================================================================
 
