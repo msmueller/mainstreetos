@@ -322,6 +322,12 @@ export default function PublicNdaClient(props: Props) {
               <input className="text-input" type="email" autoComplete="email" value={email}
                 onChange={(e) => setField('buyer_email', e.target.value)} placeholder="jane@example.com" disabled={otpSent} />
             </div>
+            <div className="sig-section">
+              <label className="sig-label">Your phone<span className="required-mark">*</span></label>
+              <input className="text-input" type="tel" autoComplete="tel"
+                value={String(fieldValues.buyer_phone ?? '')}
+                onChange={(e) => setField('buyer_phone', e.target.value)} placeholder="(555) 123-4567" />
+            </div>
 
             {turnstileSiteKey && !otpSent && (
               <div className="turnstile-wrap" ref={turnstileRef} />
