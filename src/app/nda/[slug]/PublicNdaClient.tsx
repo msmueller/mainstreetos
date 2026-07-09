@@ -276,6 +276,15 @@ export default function PublicNdaClient(props: Props) {
 
             <section className="doc-section">
               <h2>Buyer Profile</h2>
+              {/* Identity first (Name / Email / Phone) — mirrored with the
+                  "Start your NDA" panel; both bind to the same values so they
+                  stay in sync. Email is locked once a code has been sent. */}
+              <IdentityFields
+                buyerFields={buyerFields}
+                fieldValues={fieldValues}
+                setField={setField}
+                emailLocked={otpSent}
+              />
               {buyerFields
                 .filter((f) => !f.type.includes('signature') && !IDENTITY_FIELDS.has(f.name))
                 .map((f) => (
@@ -417,6 +426,46 @@ export default function PublicNdaClient(props: Props) {
 // ============================================================================
 // Field renderer (mirrors /sign/[token] BuyerField)
 // ============================================================================
+
+/** Name / Email / Phone rendered as the first fields of the Buyer Profile,
+ *  mirrored with the sign panel. Uses each field's schema label (so Corporate
+ *  shows "Buyer Name (Individual or Entity)"), falling back to a default.
+ *  Only renders a row for fields the active template actually defines. */
+function IdentityFields({ buyerFields, fieldValues, setField, emailLocked }: {
+  buyerFields: FieldSpec[];
+  fieldValues: Record<string, any>;
+  setField: (name: string, value: any) => void;
+  emailLocked: boolean;
+}) {
+  const rows: Array<{ name: string; type: string; def: string; autoComplete: string }> = [
+    { name: 'buyer_name',  type: 'text',  def: 'Full Legal Name', autoComplete: 'name' },
+    { name: 'buyer_email', type: 'email', def: 'Email',           autoComplete: 'email' },
+    { name: 'buyer_phone', type: 'tel',   def: 'Phone',           autoComplete: 'tel' },
+  ];
+  return (
+    <>
+      {rows.map(({ name, type, def, autoComplete }) => {
+        const f = buyerFields.find((x) => x.name === name);
+        if (!f) return null; // template doesn't define this field
+        const label = f.label ?? def;
+        const id = `bp-${name}`;
+        return (
+          <div className="field-row" key={name}>
+            <label htmlFor={id}>{label}{f.required && <span className="required-mark">*</span>}</label>
+            <input
+              id={id}
+              type={type}
+              value={String(fieldValues[name] ?? '')}
+              onChange={(e) => setField(name, e.target.value)}
+              disabled={name === 'buyer_email' && emailLocked}
+              autoComplete={autoComplete}
+            />
+          </div>
+        );
+      })}
+    </>
+  );
+}
 
 function BuyerField({ field, value, onChange }: { field: FieldSpec; value: string; onChange: (v: string) => void; }) {
   const id = `field-${field.name}`;
