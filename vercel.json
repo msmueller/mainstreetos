@@ -3,6 +3,10 @@
     {
       "path": "/api/router/cron/auto-route",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/nethunt/sync/cron",
+      "schedule": "*/15 * * * *"
     }
   ]
 }
