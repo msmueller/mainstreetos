@@ -193,7 +193,7 @@ export async function GET(req: NextRequest) {
           'Name': name,
           'First Name': txt(p, 'First Name'),
           'Last Name': txt(p, 'Last Name'),
-          'Email': email,
+          'Email': [email],
           'Message': txt(p, 'Message'),
           'Source': optName(p, 'Source') || 'Notion',
           'Sync Origin': 'Notion',           // loop guard
