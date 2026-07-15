@@ -3,7 +3,7 @@
 // ============================================================
 // MainStreetOS — ListControls (Phase 13.2)
 // ------------------------------------------------------------
-// Attio/Basepoint-style secondary toolbar rendered below the
+// CRM-style secondary toolbar rendered below the
 // TopBar on index pages. View switcher, Filter button, Sort
 // button, and an optional trailing slot for extras (e.g.,
 // Import/Export). Filter/Sort dropdowns are UI-only in 13.2 —

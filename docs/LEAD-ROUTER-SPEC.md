@@ -98,7 +98,7 @@ Gmail Pub/Sub watch on Mark's inbox
 - **Email engine:** Gmail API (NEW in v2 — replaces Saleshandy)
 - **Activity Log:** Google Sheet (Sheets MCP integration already deployed)
 - **AI calls:** Anthropic API (Claude Opus 4.7)
-- **Workflow glue:** Relay.app, GetSlap (still relevant for Notion automations)
+- **Workflow glue:** Notion-native (Notion Agents + Notion Workers) + NetHunt Workflows/Webhooks  _(Relay.app and GetSlap retired 2026-07-14)_
 
 ---
 

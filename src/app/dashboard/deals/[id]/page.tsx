@@ -511,7 +511,7 @@ export default function BrokerDealDashboard() {
 
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-6 py-5">
-          {/* Phase 13.2: Attio-style breadcrumb trail above the record title */}
+          {/* Phase 13.2: CRM-style breadcrumb trail above the record title */}
           <nav className="mb-2 text-xs text-slate-500 flex items-center gap-1 flex-wrap">
             <Link href="/dashboard" className="hover:text-slate-900 hover:underline transition">
               Records
@@ -619,7 +619,7 @@ export default function BrokerDealDashboard() {
                     </span>
                   )}
                 </button>
-                {/* Phase 13.2: Attio-style ⋯ overflow menu */}
+                {/* Phase 13.2: CRM-style ⋯ overflow menu */}
                 <RecordActionsMenu
                   items={buildDealActions(deal, linkedValuationId)}
                 />
@@ -1015,7 +1015,7 @@ export default function BrokerDealDashboard() {
 // ------------------------------------------------------------
 // Phase 13.2 — RecordActionsMenu item builder
 // ------------------------------------------------------------
-// Returns the items for the Attio-style ⋯ overflow menu in the
+// Returns the items for the CRM-style ⋯ overflow menu in the
 // deal detail header. Kept outside the component so it doesn't
 // re-allocate every render.
 // ------------------------------------------------------------

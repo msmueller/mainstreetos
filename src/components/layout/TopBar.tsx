@@ -1,7 +1,7 @@
 // ============================================================
 // MainStreetOS — TopBar (Phase 13.2)
 // ------------------------------------------------------------
-// Attio-style page header: breadcrumb trail, large title,
+// CRM-style page header: breadcrumb trail, large title,
 // optional subtitle, right-side actions slot, optional primary
 // action button. Rendered at the top of each dashboard page
 // (explicit-per-page pattern so breadcrumbs and actions can be

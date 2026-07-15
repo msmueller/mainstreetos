@@ -2,7 +2,7 @@
 
 // ============================================================
 // ListView — Phase 12.11c
-// Generic Attio-parity list/table component for CRM entities.
+// Generic CRM-parity list/table component for CRM entities.
 //
 // Features:
 //   - Global search (debounced)
