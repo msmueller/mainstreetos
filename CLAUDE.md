@@ -8,7 +8,7 @@ MainStreetOS is an AI-native deal operating system for business brokers and CRE 
 
 ## Design Invariants
 
-Six load-bearing architectural guardrails. Every migration, schema change, new object, and UI decision is reviewed against these rules. Adopted 2026-04-22 following YC Co-Founder build-out review. Mirrored in the Attio Parity Blueprint (Notion page `3489af0754ec81908f4dfc1e1640b27a`).
+Seven load-bearing architectural guardrails. Every migration, schema change, new object, and UI decision is reviewed against these rules. Adopted 2026-04-22 following YC Co-Founder build-out review. (These invariants originated in the CRM Redesign work; the external-Attio *parity* goal is retired — MSOS is now the standalone core CRM/deal OS, not a mirror of Attio.)
 
 1. **A contact is not a deal.** Transaction logic never lives on `contacts`. Opportunity records (`deals`, future `opportunities`) carry deal state.
 2. **A company is not a workflow.** `organizations` records persist; workflow state lives on list entries, not on the company itself.
@@ -16,6 +16,7 @@ Six load-bearing architectural guardrails. Every migration, schema change, new o
 4. **A record can live in many processes.** One contact can be a buyer lead, seller client, and consulting client simultaneously — each relationship lives on its own list entry, not by cloning the contact.
 5. **AI sits on top of a strong schema, not in place of one.** Agents are drafters, classifiers, summarizers, and enrichers. They never write authoritative fields without human review via `/dashboard/drafts`.
 6. **CRE and BIZ share a core, not identical stages.** One People/Company/Activity/Task layer; separate pipeline enums, overlay fields, and list configurations for CRE and BIZ work.
+7. **The relationship layer is Notion-native, not rebuilt in MSOS.** *(Added 2026-06-04 (Roadmap v2.0); relationship layer moved to Notion-native 2026-07-14 after Attio/Relay were retired.)* MSOS owns and invests in the moat — the CAIBVS valuation engine, the agentic drafting/intelligence pipeline, Open Brain memory, the secure client portal + NDA lifecycle + document gating, buyer qualification, and CRE/BIZ convergence. The relationship / communications / automation layer — companies-as-CRM, activity feed, email/calendar handling, the Lists/Views/Dashboards builder, workflow automation, and contact enrichment — lives in **Notion (the canonical hub)** and **NetHunt (the mobile CRM connection)**. MSOS syncs it as a read-mostly mirror via the Notion API and **never rebuilds** it in-house; automation runs Notion-native (Notion Agents + Notion Workers) plus NetHunt Workflows/Webhooks. **No Attio, no Relay.** Where #7 conflicts with the in-house "list entry" language of #2–#4, #7 governs: build a primitive in MSOS only when it carries MSOS-owned process state; otherwise use Notion / NetHunt.
 
 Before opening any migration PR, the author must state which invariant(s) the change exercises and how the change respects each one.
 
@@ -82,3 +83,11 @@ Supabase Auth with password-based login/signup. Server actions in `app/auth/acti
 - `ValuationMethodType`: market_multiple, capitalization_of_earnings, dcf, asset_based, rule_of_thumb
 - `EarningsMetric`: sde, ebitda
 - `SubscriptionTier` with `TIER_LIMITS` defining monthly valuation caps per tier
+
+## Canonical Pipeline Fields (Notion ↔ MSOS)
+
+Source-of-truth registry for the deal/lead pipeline. Verbatim string matching is required between Notion and MSOS so the Notion-native sync (Notion Agents/Workers + the MSOS API) never silently drops a field. **Attio and the Relay sync are retired (2026-07-14)** — MSOS holds its pipeline data directly in Supabase and connects to Notion natively, with no Attio intermediary. (Legacy: the former "Notion ↔ Attio Sync — Field Map & Flow Spec v1.0" is superseded.)
+
+**DEALS canonical stage = `Deal Phase`** (ratified 2026-06-05). 10 stages: Inquiry · Qualification · NDA Executed · CIM Review · LOI Negotiation · Under Contract · Due Diligence · Financing / Approvals · Closing · Terminated. Retire `Deal Stage`, `Listing Engagement Stage`, `Seller Pipeline Stage`; collapse `Status` to a health field. This **supersedes** the 2026-04-22 call (which kept `Seller Pipeline Stage` + a new `Buyer Pipeline Stage` and archived `Deal Phase`) because the v1.0 Field Map conversion handoff initializes `Deal Phase`. The §6 additive `Deal Phase` options (CIM Released, Buyer Meeting, IOI, Definitive Agreement, Post-Closing) remain a held decision.
+
+**LEADS canonical stage = `Pipeline Stage`** (11 values) + `Status` (health: New · Active · Dormant · Closed · Withdrawn). Retire `Status Update` (legacy 10-stage) and `Disposition` (8-value axis folded into Pipeline Stage terminals + Status). `Source` and `Stage Entered` additive fields are live.
