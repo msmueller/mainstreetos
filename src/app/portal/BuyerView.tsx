@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import { createClient } from '@/lib/supabase/client'
 import NdaAcceptanceModal from './NdaAcceptanceModal'
+import DataRoomSection from './DataRoomSection'
 
 // pdf.js is heavy and browser-only — dynamic-import with ssr:false so
 // it never runs on the server and doesn't bloat the initial bundle.
@@ -214,9 +215,48 @@ export default function BuyerView({
       const { data: rpcData, error: rpcErr } = await supabase
         .rpc('get_portal_view', { p_contact_id: contactId })
 
+      // get_portal_view returns a FLAT rowset — one row per (deal × document):
+      //   { deal_id, listing_name, current_stage, portal,
+      //     document_id, document_name, document_type, storage_path }
+      // Group those rows into PortalDeal objects with a nested documents[] array,
+      // then prefer the deal matching the resolved context (parentId), else the first.
       if (!rpcErr && Array.isArray(rpcData) && rpcData.length > 0) {
-        const liveDeals = rpcData as PortalDeal[]
-        setSelectedDeal(liveDeals[0])
+        type FlatRow = {
+          deal_id: string
+          listing_name: string
+          current_stage: string
+          portal: string
+          document_id: string | null
+          document_name: string | null
+          document_type: string | null
+          storage_path: string | null
+        }
+        const rows = rpcData as FlatRow[]
+        const byDeal = new Map<string, PortalDeal>()
+        for (const r of rows) {
+          let d = byDeal.get(r.deal_id)
+          if (!d) {
+            d = {
+              deal_id: r.deal_id,
+              listing_name: r.listing_name,
+              current_stage: r.current_stage,
+              portal: r.portal,
+              documents: [],
+            }
+            byDeal.set(r.deal_id, d)
+          }
+          if (r.document_id) {
+            d.documents.push({
+              id: r.document_id,
+              document_name: r.document_name ?? 'Document',
+              document_type: (r.document_type ?? 'other').toLowerCase(),
+              storage_path: r.storage_path,
+            })
+          }
+        }
+        const deals = Array.from(byDeal.values())
+        const chosen = deals.find((d) => d.deal_id === ctx?.parentId) ?? deals[0]
+        setSelectedDeal(chosen)
         setUsingDemo(false)
       } else {
         setSelectedDeal(SEEDED_DEAL)
@@ -465,6 +505,13 @@ export default function BuyerView({
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-4">
+            {!usingDemo && dealContext && (
+              <DataRoomSection
+                parentType={dealContext.parentType}
+                parentId={dealContext.parentId}
+              />
+            )}
+
             <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
               📁 Available Documents
               <span className="text-sm font-normal text-slate-500">
