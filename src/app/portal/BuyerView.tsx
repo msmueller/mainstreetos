@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic'
 import { createClient } from '@/lib/supabase/client'
 import NdaAcceptanceModal from './NdaAcceptanceModal'
 import DataRoomSection from './DataRoomSection'
+import DataRoomQA from './DataRoomQA'
 
 // pdf.js is heavy and browser-only — dynamic-import with ssr:false so
 // it never runs on the server and doesn't bloat the initial bundle.
@@ -520,10 +521,16 @@ export default function BuyerView({
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-4">
             {!usingDemo && dealContext && (
-              <DataRoomSection
-                parentType={dealContext.parentType}
-                parentId={dealContext.parentId}
-              />
+              <>
+                <DataRoomSection
+                  parentType={dealContext.parentType}
+                  parentId={dealContext.parentId}
+                />
+                <DataRoomQA
+                  parentType={dealContext.parentType}
+                  parentId={dealContext.parentId}
+                />
+              </>
             )}
 
             <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
