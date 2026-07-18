@@ -19,7 +19,9 @@ export async function login(formData: FormData) {
   }
 
   revalidatePath('/', 'layout')
-  redirect('/dashboard')
+  // Route by persona: staff → dashboard, everyone else (buyers) → client portal.
+  const { data: isStaff } = await supabase.rpc('fn_is_staff')
+  redirect(isStaff ? '/dashboard' : '/portal')
 }
 
 export async function signup(formData: FormData) {
