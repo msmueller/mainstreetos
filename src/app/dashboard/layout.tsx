@@ -26,6 +26,13 @@ export default async function DashboardLayout({
   const { data: { user: authUser } } = await supabase.auth.getUser()
   if (!authUser) redirect('/login')
 
+  // Access guard: the dashboard is staff-only. Non-staff (e.g. buyer_client)
+  // are redirected to their client portal. fn_is_staff() is the same
+  // SECURITY DEFINER gate the database RLS uses, so UI access can never
+  // drift from data-level access.
+  const { data: isStaff } = await supabase.rpc('fn_is_staff')
+  if (!isStaff) redirect('/portal')
+
   const { data: profile } = await supabase
     .from('users')
     .select('*')
