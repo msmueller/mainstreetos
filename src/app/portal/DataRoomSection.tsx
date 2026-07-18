@@ -21,6 +21,8 @@ interface DataRoomDoc {
   drive_file_id: string | null
   download_disabled: boolean
   min_stage: string
+  folder_name?: string | null
+  folder_sort?: number | null
 }
 interface DataRoomPayload {
   data_room: { name?: string; drive_root_url?: string } | null
@@ -34,7 +36,6 @@ const TIER_META: Record<string, { label: string; cls: string }> = {
   level_2_nda_required: { label: 'Tier 2 · NDA',        cls: 'bg-blue-50 text-blue-800 border-blue-200' },
   level_3_deal_room:    { label: 'Tier 3 · Deal Room',  cls: 'bg-rose-50 text-rose-800 border-rose-200' },
 }
-const TIER_ORDER = ['level_1_basic', 'level_2_nda_required', 'level_3_deal_room']
 
 export default function DataRoomSection({
   parentType,
@@ -74,9 +75,16 @@ export default function DataRoomSection({
 
   if (loading || !ok || docs.length === 0) return null
 
-  const groups = TIER_ORDER
-    .map((tier) => ({ tier, items: docs.filter((d) => d.tier === tier) }))
-    .filter((g) => g.items.length > 0)
+  // Group documents by their data-room folder, ordered by the folder's sort order.
+  // Documents with no folder fall into "Other Documents" at the end.
+  const folderMap = new Map<string, { sort: number; label: string; items: DataRoomDoc[] }>()
+  for (const d of docs) {
+    const label = d.folder_name || 'Other Documents'
+    const sort = d.folder_sort ?? 999
+    if (!folderMap.has(label)) folderMap.set(label, { sort, label, items: [] })
+    folderMap.get(label)!.items.push(d)
+  }
+  const groups = Array.from(folderMap.values()).sort((a, b) => a.sort - b.sort)
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
@@ -94,11 +102,9 @@ export default function DataRoomSection({
       </div>
       <div className="divide-y divide-slate-100">
         {groups.map((g) => (
-          <div key={g.tier} className="px-5 py-3">
-            <span
-              className={`inline-block text-[10px] px-2 py-0.5 rounded-full border uppercase tracking-wide mb-2 ${TIER_META[g.tier]?.cls || ''}`}
-            >
-              {TIER_META[g.tier]?.label || g.tier}
+          <div key={g.label} className="px-5 py-3">
+            <span className="inline-block text-[11px] font-semibold text-slate-700 mb-2">
+              {g.label}
             </span>
             <div className="space-y-1.5">
               {g.items.map((d) => (
@@ -107,6 +113,7 @@ export default function DataRoomSection({
                     <p className="text-sm font-medium text-slate-900 truncate">{d.name}</p>
                     <p className="text-[11px] text-slate-500 capitalize">
                       {(d.type || 'document').replace(/_/g, ' ')}
+                      {TIER_META[d.tier]?.label ? ` · ${TIER_META[d.tier]?.label}` : ''}
                       {d.download_disabled ? ' · view only' : ''}
                     </p>
                   </div>
