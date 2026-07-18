@@ -30,6 +30,20 @@ const STAGE_LABELS: Record<string, string> = {
 }
 const STAGE_ORDER = Object.keys(STAGE_LABELS)
 
+// Compact labels shown in the top progress bar (independent of the fuller
+// STAGE_LABELS used by the status badge and access panel).
+const STAGE_SHORT: Record<string, string> = {
+  inquiry: 'Inquiry',
+  nda_executed: 'NDA/BP',
+  qualified: 'Qualified',
+  loi_negotiation: 'LOI/POF',
+  under_contract: 'Contract',
+  due_diligence: 'DueDilg',
+  financing: 'Financing',
+  closing: 'Settlement',
+  terminated: 'Terminated',
+}
+
 const PORTAL_LABELS: Record<string, string> = {
   om: 'Offering Memorandum',
   cim: 'Confidential Information',
@@ -494,7 +508,7 @@ export default function BuyerView({
                     <span
                       className={`text-xs mt-2 ${isCurrent ? 'font-semibold text-blue-700' : 'text-slate-400'} ${i > 3 ? 'hidden lg:block' : ''}`}
                     >
-                      {STAGE_LABELS[stage].split(' ')[0]}
+                      {STAGE_SHORT[stage] ?? STAGE_LABELS[stage].split(' ')[0]}
                     </span>
                   </div>
                 )
