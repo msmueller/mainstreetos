@@ -95,8 +95,8 @@ export default function CommandPalette() {
     if (!trimmed) {
       // Empty state: show nav + create + a few recent items
       const [recentDeals, recentListings, recentValuations] = await Promise.all([
-        supabase.from('deals').select('id, listing_name, industry').order('created_at', { ascending: false }).limit(5),
-        supabase.from('seller_listings').select('id, listing_name, industry').order('created_at', { ascending: false }).limit(5),
+        supabase.from('buyer_engagements').select('id, name').order('created_at', { ascending: false }).limit(5),
+        supabase.from('seller_listings').select('id, name, industry').order('created_at', { ascending: false }).limit(5),
         supabase.from('valuations').select('id, business_name, industry').order('created_at', { ascending: false }).limit(5),
       ])
       const r: PaletteResult[] = [
@@ -105,15 +105,15 @@ export default function CommandPalette() {
         ...(recentDeals.data || []).map((d) => ({
           id: `deal-${d.id}`,
           group: 'Deals' as const,
-          label: d.listing_name || 'Untitled deal',
-          sublabel: d.industry || undefined,
-          href: `/dashboard/deals/${d.id}`,
+          label: d.name || 'Untitled buyer search',
+          sublabel: undefined,
+          href: '/dashboard/leads',
           icon: '🔄',
         })),
         ...(recentListings.data || []).map((l) => ({
           id: `listing-${l.id}`,
           group: 'Listings' as const,
-          label: l.listing_name || 'Untitled listing',
+          label: l.name || 'Untitled listing',
           sublabel: l.industry || undefined,
           href: `/dashboard/deals/${l.id}`,
           icon: '🏢',
@@ -132,14 +132,14 @@ export default function CommandPalette() {
 
     const [deals, listings, leads, contacts, valuations, views] = await Promise.all([
       supabase
-        .from('deals')
-        .select('id, listing_name, industry, deal_status')
-        .or(`listing_name.ilike.${ilike},industry.ilike.${ilike},business_address.ilike.${ilike}`)
+        .from('buyer_engagements')
+        .select('id, name')
+        .ilike('name', ilike)
         .limit(8),
       supabase
         .from('seller_listings')
-        .select('id, listing_name, industry, listing_status')
-        .or(`listing_name.ilike.${ilike},industry.ilike.${ilike},business_address.ilike.${ilike}`)
+        .select('id, name, industry, stage')
+        .or(`name.ilike.${ilike},industry.ilike.${ilike}`)
         .limit(8),
       supabase
         .from('buyer_leads')
@@ -181,16 +181,16 @@ export default function CommandPalette() {
       ...(deals.data || []).map((d) => ({
         id: `deal-${d.id}`,
         group: 'Deals' as const,
-        label: d.listing_name || 'Untitled deal',
-        sublabel: [d.industry, d.deal_status].filter(Boolean).join(' · ') || undefined,
-        href: `/dashboard/deals/${d.id}`,
+        label: d.name || 'Untitled buyer search',
+        sublabel: undefined,
+        href: '/dashboard/leads',
         icon: '🔄',
       })),
       ...(listings.data || []).map((l) => ({
         id: `listing-${l.id}`,
         group: 'Listings' as const,
-        label: l.listing_name || 'Untitled listing',
-        sublabel: [l.industry, l.listing_status].filter(Boolean).join(' · ') || undefined,
+        label: l.name || 'Untitled listing',
+        sublabel: [l.industry, l.stage].filter(Boolean).join(' · ') || undefined,
         href: `/dashboard/deals/${l.id}`,
         icon: '🏢',
       })),
