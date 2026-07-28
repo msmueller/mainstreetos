@@ -70,11 +70,25 @@ const RECORDS: RecordLink[] = [
     glyph: <DealsGlyph />,
   },
   {
+    href: '/dashboard/listings',
+    matchPrefix: '/dashboard/listings',
+    label: 'Listings',
+    tile: { bg: 'bg-teal-500', fg: 'text-white' },
+    glyph: <ListingsGlyph />,
+  },
+  {
     href: '/dashboard/leads',
     matchPrefix: '/dashboard/leads',
     label: 'Buyers',
     tile: { bg: 'bg-blue-500', fg: 'text-white' },
     glyph: <BuyersGlyph />,
+  },
+  {
+    href: '/dashboard/contacts',
+    matchPrefix: '/dashboard/contacts',
+    label: 'Contacts',
+    tile: { bg: 'bg-sky-500', fg: 'text-white' },
+    glyph: <ContactsGlyph />,
   },
   {
     href: '/dashboard/valuations',
@@ -350,6 +364,29 @@ function Caret({ open }: { open: boolean }) {
       className={`w-3 h-3 transition-transform ${open ? 'rotate-90' : ''}`}
     >
       <path d="M7 5l6 5-6 5" />
+    </svg>
+  )
+}
+
+function ListingsGlyph() {
+  // storefront
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
+      <path d="M3 8l1.5-4h11L17 8" />
+      <path d="M4 8v8h12V8" />
+      <path d="M8 16v-4h4v4" />
+    </svg>
+  )
+}
+
+function ContactsGlyph() {
+  // two people
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
+      <circle cx="7" cy="7" r="2.2" />
+      <path d="M2.5 16c.8-2.6 2.6-3.6 4.5-3.6s3.7 1 4.5 3.6" />
+      <circle cx="14" cy="7.5" r="1.8" />
+      <path d="M13 12.6c1.8.1 3.4 1 4.1 3.4" />
     </svg>
   )
 }
