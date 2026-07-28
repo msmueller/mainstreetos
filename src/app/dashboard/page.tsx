@@ -26,19 +26,26 @@ interface PinnedView {
 }
 
 async function loadBrokerContext(supabase: Awaited<ReturnType<typeof createClient>>) {
-  const [deals, leads, listings, drafts, activities, views] = await Promise.all([
-    supabase.from('deals').select('id', { count: 'exact', head: true }).eq('deal_status', 'active'),
+  // Phase 13.2: public.deals archived — active-deal count is open seller
+  // listings + active buyer engagements; listing tile counts stage='active'.
+  const [listingsAll, engagements, leads, drafts, activities, views] = await Promise.all([
+    supabase.from('seller_listings').select('id, stage'),
+    supabase.from('buyer_engagements').select('id', { count: 'exact', head: true }),
     supabase.from('buyer_leads').select('id', { count: 'exact', head: true }).not('current_stage', 'in', '("closed_won","lost")'),
-    supabase.from('seller_listings').select('id', { count: 'exact', head: true }).eq('listing_status', 'active'),
     supabase.from('ai_drafts').select('id', { count: 'exact', head: true }).in('status', ['pending_review', 'draft']),
     supabase.from('activities').select('id, kind, subject, created_at, deal_id').order('created_at', { ascending: false }).limit(8),
     supabase.from('saved_views').select('id, name, scope, entity').eq('pinned_to_sidebar', true).limit(10),
   ])
 
+  const listingRows = (listingsAll.data || []) as { id: string; stage: string | null }[]
+  const openListings = listingRows.filter((l) =>
+    ['mandate', 'qualifying', 'active', 'under_contract'].includes(l.stage || '')
+  )
+
   const counts: BrokerCounts = {
-    active_deals: deals.count ?? 0,
+    active_deals: openListings.length + (engagements.count ?? 0),
     buyer_leads: leads.count ?? 0,
-    seller_listings: listings.count ?? 0,
+    seller_listings: listingRows.filter((l) => l.stage === 'active').length,
     pending_drafts: drafts.count ?? 0,
   }
 

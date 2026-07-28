@@ -181,7 +181,7 @@ export default function DealsViewSwitcher({ deals }: { deals: DealWithCounts[] }
           rows={deals}
           columns={columns}
           getRowId={(r) => r.id}
-          rowHref={(r) => `/dashboard/deals/${r.id}`}
+          rowHref={(r) => (r.deal_workflow === 'buyer_acquisition_search' ? '/dashboard/leads' : `/dashboard/deals/${r.id}`)}
           bulkActions={bulkActions}
           entityName="deal"
           entity="deals"

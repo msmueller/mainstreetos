@@ -4,6 +4,10 @@ import { useState, useMemo } from 'react'
 import type { DealWithCounts, DealType, DealStatus } from '@/lib/types'
 import { SELLER_STAGES } from '@/lib/types'
 
+// Buyer-search rows have no deal detail route; send them to the Leads surface.
+const dealHref = (d: DealWithCounts) =>
+  d.deal_workflow === 'buyer_acquisition_search' ? '/dashboard/leads' : `/dashboard/deals/${d.id}`
+
 const formatCurrency = (value: number | null) => {
   if (!value) return '—'
   return new Intl.NumberFormat('en-US', {
@@ -236,7 +240,7 @@ export default function PipelineView({ deals }: Props) {
                   stageBreakdown[stage.key].map(deal => (
                     <a
                       key={deal.id}
-                      href={`/dashboard/deals/${deal.id}`}
+                      href={dealHref(deal)}
                       className={`block ${getDealTypeColor(deal.deal_type)} bg-white rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow`}
                     >
                       <h4 className="font-semibold text-sm text-slate-900 mb-1 line-clamp-2 hover:text-blue-600">
@@ -302,7 +306,7 @@ export default function PipelineView({ deals }: Props) {
                 {sortedDeals.map(deal => (
                   <tr key={deal.id} className="hover:bg-slate-50 transition">
                     <td className="px-4 py-3">
-                      <a href={`/dashboard/deals/${deal.id}`} className="text-sm font-medium text-slate-900 hover:text-blue-600">
+                      <a href={dealHref(deal)} className="text-sm font-medium text-slate-900 hover:text-blue-600">
                         {deal.listing_name}
                       </a>
                     </td>
