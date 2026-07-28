@@ -108,34 +108,9 @@ const SEEDED_DEAL: Deal = {
   seller_stage: 'packaging_marketing',
   deal_status: 'active',
 }
-const SEEDED_BUYERS: Buyer[] = [
-  { id: 'b1000001', name: 'James Rivera', email: 'jrivera@email.com', phone: '201-555-2001', current_stage: 'inquiry', portal: 'om', nda_status: 'sent', docs_visible: 3, last_activity: '2026-04-10', activity_count: 2, liquid_cash: 150000, notes: 'BBS lead. Initial inquiry, no NDA yet.' },
-  { id: 'b1000002', name: 'Sarah Chen', company: 'Chen Family Holdings LLC', email: 'schen@email.com', phone: '732-555-3002', current_stage: 'qualified', portal: 'bp', nda_status: 'signed', docs_visible: 7, last_activity: '2026-04-11', activity_count: 5, liquid_cash: 300000, notes: 'NDA signed. CIM reviewed. Qualified buyer with restaurant experience.' },
-  { id: 'b1000003', name: 'Michael Thompson', company: 'Thompson Restaurant Group', email: 'mthompson@email.com', phone: '856-555-4003', current_stage: 'loi_negotiation', portal: 'dp', nda_status: 'signed', docs_visible: 10, last_activity: '2026-04-11', activity_count: 9, liquid_cash: 500000, notes: 'LOI submitted. In negotiation. Has SBA pre-approval.' },
-]
-const SEEDED_DOCS: DealDocument[] = [
-  { id: 1, name: 'Offering Memorandum', type: 'om', min_stage: 'inquiry', tier: 'L1', uploaded: '2026-03-01' },
-  { id: 2, name: 'Buyer Profile Questionnaire', type: 'other', min_stage: 'inquiry', tier: 'L1', uploaded: '2026-03-01' },
-  { id: 3, name: 'Non-Disclosure Agreement', type: 'nda', min_stage: 'inquiry', tier: 'L1', uploaded: '2026-03-01' },
-  { id: 4, name: 'Confidential Information Memorandum', type: 'cim', min_stage: 'nda_executed', tier: 'L2', uploaded: '2026-03-10' },
-  { id: 5, name: 'Financial Summary — 3 Year', type: 'financial', min_stage: 'nda_executed', tier: 'L2', uploaded: '2026-03-10' },
-  { id: 6, name: 'Business Valuation Report (BVR)', type: 'bvr', min_stage: 'qualified', tier: 'L2', uploaded: '2026-03-20' },
-  { id: 7, name: 'Deal Workbook — Recast P&L', type: 'deal_workbook', min_stage: 'qualified', tier: 'L2', uploaded: '2026-03-20' },
-  { id: 8, name: 'Letter of Intent Template', type: 'loi', min_stage: 'loi_negotiation', tier: 'L3', uploaded: '2026-04-01' },
-  { id: 9, name: 'Lease Abstract', type: 'disclosure', min_stage: 'loi_negotiation', tier: 'L3', uploaded: '2026-04-01' },
-  { id: 10, name: 'Equipment Schedule', type: 'disclosure', min_stage: 'loi_negotiation', tier: 'L3', uploaded: '2026-04-01' },
-  { id: 11, name: 'Purchase & Sale Agreement', type: 'legal', min_stage: 'under_contract', tier: 'L3', uploaded: '2026-04-05' },
-  { id: 12, name: 'Tax Returns 2023-2025', type: 'financial', min_stage: 'due_diligence', tier: 'L3', uploaded: '2026-04-08' },
-]
-const SEEDED_ACTIVITY: ActivityEntry[] = [
-  { contact: 'Michael Thompson', action: 'download_document', doc: 'Lease Abstract', time: '2 hours ago', portal: 'dp' },
-  { contact: 'Michael Thompson', action: 'download_document', doc: 'Equipment Schedule', time: '2 hours ago', portal: 'dp' },
-  { contact: 'Michael Thompson', action: 'download_document', doc: 'LOI Template', time: '3 hours ago', portal: 'dp' },
-  { contact: 'Sarah Chen', action: 'download_document', doc: 'BVR', time: '5 hours ago', portal: 'bp' },
-  { contact: 'Sarah Chen', action: 'download_document', doc: 'CIM', time: '5 hours ago', portal: 'bp' },
-  { contact: 'James Rivera', action: 'view_document', doc: 'Offering Memorandum', time: '1 day ago', portal: 'om' },
-  { contact: 'James Rivera', action: 'view_deal', doc: null, time: '1 day ago', portal: 'om' },
-]
+// Phase 13.2: demo seed data removed — the page now renders live data only,
+// with honest empty states. (The seeded trio of fake buyers was rendering on
+// every record because real deal_access rows are keyed by parent_id.)
 
 const fmt = (n: number | null | undefined) =>
   n == null ? '—' : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
@@ -160,11 +135,11 @@ export default function BrokerDealDashboard() {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const [deal, setDeal] = useState<Deal>(SEEDED_DEAL)
-  const [buyers, setBuyers] = useState<Buyer[]>(SEEDED_BUYERS)
-  const [documents, setDocuments] = useState<DealDocument[]>(SEEDED_DOCS)
-  const [activity, setActivity] = useState<ActivityEntry[]>(SEEDED_ACTIVITY)
+  const [buyers, setBuyers] = useState<Buyer[]>([])
+  const [documents, setDocuments] = useState<DealDocument[]>([])
+  const [activity, setActivity] = useState<ActivityEntry[]>([])
   const [loading, setLoading] = useState(true)
-  const [usingDemo, setUsingDemo] = useState(true)
+  const [usingDemo, setUsingDemo] = useState(false)
 
   const [activeTab, setActiveTab] = useState<'pipeline' | 'documents' | 'activity'>('pipeline')
   const [showAdvanceModal, setShowAdvanceModal] = useState<{ buyer: Buyer; nextStage: string } | null>(null)
@@ -243,11 +218,13 @@ export default function BrokerDealDashboard() {
       }
 
       // Buyers via deal_access + contacts join
+      // Phase 13.2: portal grants are keyed by parent_id (canonical) with
+      // deal_id retained for legacy rows — match either.
       const { data: accessRows, error: accessErr } = await supabase
         .from('deal_access')
         .select('*, contacts(*)')
-        .eq('deal_id', id)
-      if (!accessErr && Array.isArray(accessRows) && accessRows.length > 0) {
+        .or(`deal_id.eq.${id},parent_id.eq.${id}`)
+      if (!accessErr && Array.isArray(accessRows)) {
         const mapped: Buyer[] = accessRows.map((r: Record<string, unknown>) => {
           const c = (r.contacts as Record<string, unknown>) || {}
           const first = (c.first_name as string) || ''
@@ -275,8 +252,8 @@ export default function BrokerDealDashboard() {
 
       // Documents
       const { data: docRows, error: docErr } = await supabase
-        .from('deal_documents').select('*').eq('deal_id', id)
-      if (!docErr && Array.isArray(docRows) && docRows.length > 0) {
+        .from('deal_documents').select('*').or(`deal_id.eq.${id},parent_id.eq.${id}`)
+      if (!docErr && Array.isArray(docRows)) {
         setDocuments(docRows.map((d: Record<string, unknown>) => ({
           id: d.id as string,
           name: (d.document_name as string) || (d.name as string) || 'Document',
@@ -297,7 +274,7 @@ export default function BrokerDealDashboard() {
         .eq('deal_id', id)
         .order('created_at', { ascending: false })
         .limit(25)
-      if (!actErr && Array.isArray(actRows) && actRows.length > 0) {
+      if (!actErr && Array.isArray(actRows)) {
         setActivity(actRows.map((r: Record<string, unknown>) => {
           const c = (r.contacts as Record<string, unknown>) || {}
           return {
@@ -505,7 +482,7 @@ export default function BrokerDealDashboard() {
     <div className="min-h-screen bg-gray-50 -mx-6 -my-6">
       {usingDemo && (
         <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 text-xs text-amber-800">
-          Demo mode — showing seeded test data. Live tables not populated for this deal yet.
+          This record could not be loaded from the live tables (seller_listings / legacy deals). Data shown may be incomplete.
         </div>
       )}
 
@@ -789,6 +766,11 @@ export default function BrokerDealDashboard() {
       <div className="max-w-7xl mx-auto px-6 py-6">
         {activeTab === 'pipeline' && (
           <div className="space-y-4">
+            {buyers.length === 0 && (
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-6 py-10 text-center text-sm text-gray-500">
+                No buyers on this record yet — grant portal access below to start the pipeline.
+              </div>
+            )}
             {buyers.map((buyer) => {
               const stageIdx = STAGE_ORDER.indexOf(buyer.current_stage)
               const nextStage = stageIdx < STAGE_ORDER.length - 1 ? STAGE_ORDER[stageIdx + 1] : null
@@ -866,6 +848,9 @@ export default function BrokerDealDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
+                  {documents.length === 0 && (
+                    <tr><td colSpan={6} className="px-5 py-8 text-center text-sm text-gray-500">No documents uploaded to this record yet.</td></tr>
+                  )}
                   {documents.map((doc) => {
                     const visibleTo = buyers.filter((b) => STAGE_ORDER.indexOf(b.current_stage) >= STAGE_ORDER.indexOf(doc.min_stage))
                     return (
@@ -902,6 +887,9 @@ export default function BrokerDealDashboard() {
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Portal Activity</h3>
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
               <div className="divide-y divide-gray-100">
+                {activity.length === 0 && (
+                  <div className="px-5 py-8 text-center text-sm text-gray-500">No portal activity recorded yet.</div>
+                )}
                 {activity.map((act, i) => (
                   <div key={i} className="px-5 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
                     <div className="flex items-center gap-3">
