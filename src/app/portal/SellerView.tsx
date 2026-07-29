@@ -99,11 +99,35 @@ interface DocumentRow {
   version: number | null
 }
 
+// Phase 13.5 — buyer-lead list (identity disclosed post-NDA) + seller's listings
+interface BuyerLeadRow {
+  display_name: string
+  identity_disclosed: boolean
+  stage: string
+  nda_signed: boolean
+  source: string | null
+  buyer_type: string | null
+  date_received: string | null
+  fit_rating: number | string | null
+  motivation_rating: number | string | null
+  last_active: string | null
+}
+
+interface MyListingRow {
+  id: string
+  name: string | null
+  stage: string | null
+  asking_price: number | null
+  listed_on: string | null
+}
+
 interface DashboardPayload {
   listing: ListingPayload
   engagement: EngagementPayload
   activity: ActivityRow[]
   documents: DocumentRow[]
+  buyers?: BuyerLeadRow[]
+  my_listings?: MyListingRow[]
   generated_at: string
 }
 
@@ -274,6 +298,8 @@ export default function SellerView({ listingId, contactName, onSignOut }: Seller
   }
 
   const { listing, engagement, activity, documents } = dashboard
+  const buyers = dashboard.buyers || []
+  const myListings = dashboard.my_listings || []
   const stageKey = listing.stage || 'active'
 
   // Group documents by confidential tier
@@ -419,6 +445,70 @@ export default function SellerView({ listingId, contactName, onSignOut }: Seller
               )}
             </div>
 
+            {/* Buyer leads — Phase 13.5 (identity disclosed post-NDA) */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-200 bg-slate-50">
+                <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                  👥 Buyer Leads
+                  <span className="text-sm font-normal text-slate-500">({buyers.length})</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Buyer identities are disclosed once their NDA is executed.
+                </p>
+              </div>
+              {buyers.length === 0 ? (
+                <p className="px-6 py-8 text-sm text-slate-500 italic text-center">
+                  No buyer leads on this listing yet.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200">
+                        {['Name', 'Date Received', 'Source', 'Buyer Type', 'Status', 'Fit', 'Motivation'].map((h) => (
+                          <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase whitespace-nowrap">
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {buyers.map((b, i) => (
+                        <tr key={i} className="hover:bg-blue-50/40 transition-colors">
+                          <td className="px-4 py-3">
+                            <span className="text-sm font-medium text-slate-900 whitespace-nowrap">
+                              {b.identity_disclosed ? b.display_name : `🔒 ${b.display_name}`}
+                            </span>
+                            {b.nda_signed && (
+                              <span className="ml-2 text-xs px-1.5 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200">NDA ✓</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-slate-600 whitespace-nowrap">{formatDate(b.date_received)}</td>
+                          <td className="px-4 py-3 text-sm text-slate-600 whitespace-nowrap">
+                            {b.source ? b.source.replace(/_/g, ' ') : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-slate-600 whitespace-nowrap capitalize">
+                            {b.buyer_type ? b.buyer_type.replace(/_/g, ' ') : '—'}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                              {STAGE_LABELS[b.stage] || b.stage}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-slate-600 whitespace-nowrap">
+                            {b.fit_rating != null && b.fit_rating !== '' ? String(b.fit_rating) : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-slate-600 whitespace-nowrap">
+                            {b.motivation_rating != null && b.motivation_rating !== '' ? String(b.motivation_rating) : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
             {/* Recent activity */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b border-slate-200 bg-slate-50">
@@ -476,6 +566,32 @@ export default function SellerView({ listingId, contactName, onSignOut }: Seller
 
           {/* Right column — documents + broker card */}
           <div className="space-y-4">
+            {/* Your listings — Phase 13.5 */}
+            {myListings.length > 1 && (
+              <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="px-5 py-3 bg-slate-50 border-b border-slate-200">
+                  <h4 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                    🏢 Your Listings
+                    <span className="text-xs font-normal text-slate-500">({myListings.length})</span>
+                  </h4>
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {myListings.map((l) => (
+                    <div key={l.id} className={`px-5 py-3 ${l.id === listing.id ? 'bg-blue-50/50' : ''}`}>
+                      <p className="text-sm font-medium text-slate-900 truncate">
+                        {l.name || 'Unnamed listing'}
+                        {l.id === listing.id ? ' · viewing' : ''}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {l.stage ? l.stage.replace(/_/g, ' ') : '—'}
+                        {l.asking_price != null ? ` · ${formatUsd(l.asking_price)}` : ''}
+                        {l.listed_on ? ` · listed ${formatDate(l.listed_on)}` : ''}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="px-5 py-3 bg-slate-50 border-b border-slate-200">
                 <h4 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
