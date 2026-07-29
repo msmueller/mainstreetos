@@ -91,6 +91,20 @@ const RECORDS: RecordLink[] = [
     glyph: <ContactsGlyph />,
   },
   {
+    href: '/dashboard/portals',
+    matchPrefix: '/dashboard/portals',
+    label: 'Portals',
+    tile: { bg: 'bg-indigo-500', fg: 'text-white' },
+    glyph: <PortalsGlyph />,
+  },
+  {
+    href: '/dashboard/datarooms',
+    matchPrefix: '/dashboard/datarooms',
+    label: 'Data Rooms',
+    tile: { bg: 'bg-rose-500', fg: 'text-white' },
+    glyph: <DataRoomsGlyph />,
+  },
+  {
     href: '/dashboard/valuations',
     matchPrefix: '/dashboard/valuations',
     label: 'Valuations',
@@ -364,6 +378,28 @@ function Caret({ open }: { open: boolean }) {
       className={`w-3 h-3 transition-transform ${open ? 'rotate-90' : ''}`}
     >
       <path d="M7 5l6 5-6 5" />
+    </svg>
+  )
+}
+
+function PortalsGlyph() {
+  // browser window with user
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
+      <rect x="3" y="4" width="14" height="12" rx="1.5" />
+      <path d="M3 7.5h14" />
+      <circle cx="10" cy="11.5" r="1.5" />
+      <path d="M7.5 15c.5-1.2 1.4-1.8 2.5-1.8s2 .6 2.5 1.8" />
+    </svg>
+  )
+}
+
+function DataRoomsGlyph() {
+  // folder with lock dot
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
+      <path d="M3 6a1.5 1.5 0 011.5-1.5H8l1.5 2h6A1.5 1.5 0 0117 8v6.5A1.5 1.5 0 0115.5 16h-11A1.5 1.5 0 013 14.5V6z" />
+      <circle cx="10" cy="11.5" r="1.6" />
     </svg>
   )
 }
