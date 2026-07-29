@@ -91,10 +91,23 @@ interface DeliverableRow {
   created_at: string
 }
 
+interface DataRoomFolder {
+  id: string
+  name: string
+  url: string
+}
+
+interface DataRoomPayload {
+  name: string | null
+  drive_root_url: string | null
+  folders: DataRoomFolder[]
+}
+
 interface DashboardPayload {
   project: ProjectPayload
   deliverables: DeliverableRow[]
   broker: { name: string | null; company: string | null } | null
+  data_room: DataRoomPayload | null
   generated_at: string
 }
 
@@ -295,6 +308,47 @@ export default function ProjectView({ projectId, contactName, onSignOut }: Proje
             </div>
           )}
         </div>
+
+        {/* Engagement Data Room (Phase 12.12-C v2 — Drive-backed) */}
+        {data.data_room && (
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Engagement Data Room</h2>
+              {data.data_room.drive_root_url && (
+                <a
+                  href={data.data_room.drive_root_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                >
+                  Open in Google Drive ↗
+                </a>
+              )}
+            </div>
+            <p className="text-xs text-slate-500 mb-4">
+              Upload your documents to the numbered folders below — your advisor is notified as materials arrive.
+              Finished work product appears in the Deliverables folder.
+            </p>
+            {data.data_room.folders.length === 0 ? (
+              <p className="text-sm text-slate-500 py-4 text-center">Data room folders are being prepared.</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {data.data_room.folders.map((f) => (
+                  <a
+                    key={f.id}
+                    href={f.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-3 px-4 py-3 rounded-lg border border-slate-200 hover:border-blue-300 hover:bg-blue-50 transition-colors"
+                  >
+                    <span className="text-lg leading-none">📁</span>
+                    <span className="text-sm font-medium text-slate-800">{f.name}</span>
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Scope */}
         {(p.scope_statement || p.scope_description) && (
