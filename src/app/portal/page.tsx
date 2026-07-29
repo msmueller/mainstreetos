@@ -5,17 +5,20 @@ import { createClient } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
 import BuyerView from './BuyerView'
 import SellerView from './SellerView'
+import ProjectView from './ProjectView'
 
 // ============================================================
-// CLIENT PORTAL — Phase 12.12a
+// CLIENT PORTAL — Phase 12.12a + 12.12-C
 // Unified /portal route. Branches internally by persona:
-//   - seller  → SellerView (fn_portal_seller_dashboard)
-//   - buyer   → BuyerView  (get_portal_view RPC)
-//   - unauth  → BuyerView demo OR magic-link sign-in
+//   - seller     → SellerView  (fn_portal_seller_dashboard)
+//   - consulting → ProjectView (fn_portal_project_dashboard)
+//   - buyer      → BuyerView   (get_portal_view RPC)
+//   - unauth     → BuyerView demo OR magic-link sign-in
+// Persona priority: seller > consulting > buyer (default).
 // Auth is handled here; views only receive the resolved ids.
 // ============================================================
 
-type Persona = 'seller' | 'buyer' | 'anonymous'
+type Persona = 'seller' | 'consulting' | 'buyer' | 'anonymous'
 
 interface ResolvedIdentity {
   authUser: User | null
@@ -23,6 +26,7 @@ interface ResolvedIdentity {
   contactName: string
   persona: Persona
   sellerListingId: string | null
+  projectId: string | null
 }
 
 const INITIAL_IDENTITY: ResolvedIdentity = {
@@ -31,6 +35,7 @@ const INITIAL_IDENTITY: ResolvedIdentity = {
   contactName: 'Guest',
   persona: 'anonymous',
   sellerListingId: null,
+  projectId: null,
 }
 
 export default function ClientPortal() {
@@ -73,6 +78,7 @@ export default function ClientPortal() {
           contactName,
           persona: 'buyer',
           sellerListingId: null,
+          projectId: null,
         })
         return
       }
@@ -96,17 +102,36 @@ export default function ClientPortal() {
           contactName,
           persona: 'seller',
           sellerListingId: sellerAccess.parent_id as string,
+          projectId: null,
         })
         return
       }
 
-      // Default to buyer view (contact exists but no seller access)
+      // Check for consulting-client access (Phase 12.12-C, PROJECTS persona)
+      const { data: myProjects } = await supabase.rpc('fn_portal_list_my_projects')
+      const projects = Array.isArray(myProjects)
+        ? (myProjects as { project_id: string }[])
+        : []
+      if (projects.length > 0) {
+        setIdentity({
+          authUser: user,
+          contactId,
+          contactName,
+          persona: 'consulting',
+          sellerListingId: null,
+          projectId: projects[0].project_id,
+        })
+        return
+      }
+
+      // Default to buyer view (contact exists but no seller/consulting access)
       setIdentity({
         authUser: user,
         contactId,
         contactName,
         persona: 'buyer',
         sellerListingId: null,
+        projectId: null,
       })
     } catch (err) {
       console.error('[portal] resolveIdentity failed:', err)
@@ -151,6 +176,16 @@ export default function ClientPortal() {
     return (
       <SellerView
         listingId={identity.sellerListingId}
+        contactName={identity.contactName}
+        onSignOut={handleSignOut}
+      />
+    )
+  }
+
+  if (identity.persona === 'consulting' && identity.projectId) {
+    return (
+      <ProjectView
+        projectId={identity.projectId}
         contactName={identity.contactName}
         onSignOut={handleSignOut}
       />
