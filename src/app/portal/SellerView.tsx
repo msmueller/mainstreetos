@@ -46,6 +46,8 @@ const TIER_LABELS: Record<string, string> = {
   level_1_basic: 'Basic (Pre-NDA)',
   level_2_nda_required: 'NDA Required',
   level_3_deal_room: 'Deal Room',
+  level_4_contract: 'Under Contract',
+  level_5_settlement: 'Settlement & Closing',
 }
 
 const TIER_BADGE: Record<string, { bg: string; text: string }> = {
@@ -96,6 +98,7 @@ interface DocumentRow {
   document_type: string
   confidential_tier: string | null
   storage_path: string | null
+  external_url: string | null
   uploaded_at: string | null
   version: number | null
 }
@@ -262,6 +265,11 @@ export default function SellerView({ listingId, contactName, onSignOut }: Seller
   useEffect(() => { loadDashboard() }, [loadDashboard])
 
   async function handleDocument(doc: DocumentRow, mode: 'view' | 'download') {
+    // Externally-hosted documents (Google Drive / Docs) open directly.
+    if (doc.external_url) {
+      window.open(doc.external_url, '_blank', 'noopener')
+      return
+    }
     if (!doc.storage_path) return
     setDownloadingDoc(doc.id)
     try {
@@ -706,7 +714,7 @@ export default function SellerView({ listingId, contactName, onSignOut }: Seller
                               <div className="flex items-center gap-1 ml-2 flex-shrink-0">
                                 <button
                                   onClick={() => handleDocument(doc, 'view')}
-                                  disabled={downloadingDoc === doc.id || !doc.storage_path}
+                                  disabled={downloadingDoc === doc.id || (!doc.storage_path && !doc.external_url)}
                                   className="px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200 disabled:opacity-40"
                                 >
                                   {downloadingDoc === doc.id ? '...' : 'View'}
