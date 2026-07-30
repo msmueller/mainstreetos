@@ -98,6 +98,16 @@ interface DealContext {
   parentId: string
 }
 
+// Key Links — quick-access web/Notion links (fn_portal_key_links).
+// Server-side gated: seller-only links never reach the buyer payload and
+// NDA-gated URLs are withheld (locked=true) until the NDA is executed.
+interface KeyLinkRow {
+  label: string
+  url: string | null
+  gate: string
+  locked: boolean
+}
+
 interface NdaStatus {
   required: boolean
   accepted: boolean
@@ -153,6 +163,7 @@ export default function BuyerView({
   const supabase = createClient()
 
   const [selectedDeal, setSelectedDeal] = useState<PortalDeal | null>(null)
+  const [keyLinks, setKeyLinks] = useState<KeyLinkRow[]>([])
   const [dealContext, setDealContext] = useState<DealContext | null>(null)
   const [ndaStatus, setNdaStatus] = useState<NdaStatus | null>(null)
   const [loading, setLoading] = useState(true)
@@ -284,11 +295,28 @@ export default function BuyerView({
       } else {
         setNdaStatus(null)
       }
+
+      // 4) Load Key Links (server-side gated; non-fatal on failure)
+      if (ctx && ctx.parentType === 'seller_listing') {
+        const { data: linkData, error: linkErr } = await supabase.rpc('fn_portal_key_links', {
+          p_parent_type: ctx.parentType,
+          p_parent_id: ctx.parentId,
+        })
+        if (linkErr) {
+          console.warn('[buyer-portal] key links load failed:', linkErr.message)
+          setKeyLinks([])
+        } else {
+          setKeyLinks(Array.isArray(linkData) ? (linkData as KeyLinkRow[]) : [])
+        }
+      } else {
+        setKeyLinks([])
+      }
     } catch (err) {
       console.error('[buyer-portal] loadPortalView failed:', err)
       setSelectedDeal(SEEDED_DEAL)
       setDealContext(null)
       setNdaStatus(null)
+      setKeyLinks([])
       setUsingDemo(true)
     } finally {
       setLoading(false)
@@ -531,6 +559,61 @@ export default function BuyerView({
                   parentId={dealContext.parentId}
                 />
               </>
+            )}
+
+            {/* Key Links — quick access to web/Notion versions (server-side gated) */}
+            {!usingDemo && keyLinks.length > 0 && (
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                <div className="px-5 py-3 bg-slate-50 border-b border-slate-200">
+                  <h4 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                    🔗 Key Links
+                    <span className="text-xs font-normal text-slate-500">({keyLinks.length})</span>
+                  </h4>
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {keyLinks.map((link, i) => (
+                    <div
+                      key={i}
+                      className={`px-5 py-3 flex items-center justify-between gap-3 transition-colors ${
+                        link.locked ? 'bg-slate-50/60' : 'hover:bg-blue-50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className={`text-lg flex-shrink-0 ${link.locked ? 'grayscale opacity-50' : ''}`}>
+                          {link.locked ? '🔒' : '🔗'}
+                        </span>
+                        <div className="min-w-0">
+                          <p className={`text-sm font-medium truncate ${link.locked ? 'text-slate-500' : 'text-slate-900'}`}>
+                            {link.label}
+                          </p>
+                          {link.locked && (
+                            <p className="text-xs text-slate-500">NDA required</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex-shrink-0">
+                        {link.locked ? (
+                          <button
+                            onClick={() => setNdaModalOpen(true)}
+                            className="px-3 py-1.5 text-xs font-medium text-amber-800 bg-amber-50 hover:bg-amber-100 rounded-lg border border-amber-200 transition-colors"
+                          >
+                            Sign NDA to Unlock
+                          </button>
+                        ) : link.url ? (
+                          <a
+                            href={link.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 transition-colors"
+                          >
+                            Open ↗
+                          </a>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
 
             <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">

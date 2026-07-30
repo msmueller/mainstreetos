@@ -145,6 +145,20 @@ interface DashboardPayload {
   generated_at: string
 }
 
+// Key Links — quick-access web/Notion links (fn_portal_key_links)
+interface KeyLinkRow {
+  label: string
+  url: string | null
+  gate: 'public' | 'nda' | 'seller_only' | string
+  locked: boolean
+}
+
+const KEY_LINK_BADGE: Record<string, { label: string; cls: string }> = {
+  public: { label: 'Public', cls: 'bg-green-50 text-green-700 border-green-200' },
+  nda: { label: 'NDA-gated', cls: 'bg-amber-50 text-amber-800 border-amber-200' },
+  seller_only: { label: 'Seller only', cls: 'bg-purple-50 text-purple-700 border-purple-200' },
+}
+
 // Phase 12.12c — per-document view telemetry
 interface DocTelemetryRow {
   document_id: string
@@ -213,6 +227,7 @@ export default function SellerView({ listingId, contactName, onSignOut }: Seller
   const supabase = createClient()
 
   const [dashboard, setDashboard] = useState<DashboardPayload | null>(null)
+  const [keyLinks, setKeyLinks] = useState<KeyLinkRow[]>([])
   const [telemetry, setTelemetry] = useState<Record<string, DocTelemetryRow>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -222,10 +237,14 @@ export default function SellerView({ listingId, contactName, onSignOut }: Seller
     setLoading(true)
     setError(null)
     try {
-      // Fire the dashboard + telemetry RPCs in parallel
-      const [dashRes, telRes] = await Promise.all([
+      // Fire the dashboard + telemetry + key-links RPCs in parallel
+      const [dashRes, telRes, linksRes] = await Promise.all([
         supabase.rpc('fn_portal_seller_dashboard', { p_listing_id: listingId }),
         supabase.rpc('fn_portal_doc_telemetry', {
+          p_parent_type: 'seller_listing',
+          p_parent_id: listingId,
+        }),
+        supabase.rpc('fn_portal_key_links', {
           p_parent_type: 'seller_listing',
           p_parent_id: listingId,
         }),
@@ -253,6 +272,16 @@ export default function SellerView({ listingId, contactName, onSignOut }: Seller
         setTelemetry(map)
       } else {
         setTelemetry({})
+      }
+
+      // Key links failure is non-fatal — just hide the section
+      if (linksRes.error) {
+        console.warn('[seller-portal] key links load failed:', linksRes.error)
+        setKeyLinks([])
+      } else if (Array.isArray(linksRes.data)) {
+        setKeyLinks(linksRes.data as KeyLinkRow[])
+      } else {
+        setKeyLinks([])
       }
     } catch (err) {
       console.error('[seller-portal] load failed:', err)
@@ -464,11 +493,11 @@ export default function SellerView({ listingId, contactName, onSignOut }: Seller
                         </div>
                         <div className="flex-1 bg-slate-100 rounded-full h-6 overflow-hidden relative">
                           <div
-                            className="h-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all"
+                            className="h-full bg-gradient-to-r from-blue-200 to-blue-300 transition-all"
                             style={{ width: `${pct}%` }}
                           />
                           <div className="absolute inset-0 flex items-center justify-end pr-2">
-                            <span className="text-xs font-semibold text-slate-700">{count}</span>
+                            <span className="text-xs font-bold text-slate-900">{count}</span>
                           </div>
                         </div>
                       </div>
@@ -660,6 +689,49 @@ export default function SellerView({ listingId, contactName, onSignOut }: Seller
                 </div>
               </div>
             )}
+            {/* Key Links — quick access to web/Notion versions */}
+            {keyLinks.length > 0 && (
+              <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="px-5 py-3 bg-slate-50 border-b border-slate-200">
+                  <h4 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                    🔗 Key Links
+                    <span className="text-xs font-normal text-slate-500">({keyLinks.length})</span>
+                  </h4>
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {keyLinks.map((link, i) => {
+                    const badge = KEY_LINK_BADGE[link.gate] || KEY_LINK_BADGE.public
+                    return (
+                      <div key={i} className="px-5 py-3 hover:bg-blue-50/40 transition-colors">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-slate-900 truncate">
+                              {link.label}
+                            </p>
+                            <span className={`inline-block mt-1 text-[11px] font-medium px-1.5 py-0.5 rounded-full border ${badge.cls}`}>
+                              {badge.label}
+                            </span>
+                          </div>
+                          {link.url ? (
+                            <a
+                              href={link.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex-shrink-0 px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200"
+                            >
+                              Open ↗
+                            </a>
+                          ) : (
+                            <span className="flex-shrink-0 text-sm text-slate-400">🔒</span>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="px-5 py-3 bg-slate-50 border-b border-slate-200">
                 <h4 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
