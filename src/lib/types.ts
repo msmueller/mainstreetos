@@ -101,6 +101,7 @@ export type TransactionSide = 'sell_side' | 'buy_side' | 'dual_agency' | 'consul
 export type SellerStage =
   | 'prospecting' | 'engagement' | 'discovery_valuation'
   | 'packaging_marketing' | 'offers_negotiation' | 'due_diligence' | 'settlement_closure'
+  | 'withdrawn_dormant'
 export type DealWorkflow = 'seller_disposition' | 'buyer_lead_management' | 'buyer_acquisition_search'
 export type ConfidentialTier = 'level_1_basic' | 'level_2_nda_required' | 'level_3_deal_room'
 export type ContactRole =
@@ -232,14 +233,41 @@ export interface DealDocument {
   created_at: string
 }
 
+// Phase 13.6 — labels are a verbatim mirror of Notion DEALS "Deal Stage" options.
 export const SELLER_STAGES: { key: SellerStage; label: string }[] = [
-  { key: 'prospecting', label: 'Prospecting' },
-  { key: 'engagement', label: 'Engagement' },
-  { key: 'discovery_valuation', label: 'Discovery & Valuation' },
-  { key: 'packaging_marketing', label: 'Marketing & Listing' },
-  { key: 'offers_negotiation', label: 'Offers & Negotiation' },
-  { key: 'due_diligence', label: 'Due Diligence' },
-  { key: 'settlement_closure', label: 'Settlement & Closure' },
+  { key: 'prospecting', label: '1. Prospecting & Pitching' },
+  { key: 'engagement', label: '2. Engagement & Agreements' },
+  { key: 'discovery_valuation', label: '3. Discovery & Valuation' },
+  { key: 'packaging_marketing', label: '4. Packaging & Marketing' },
+  { key: 'offers_negotiation', label: '5. Offers & Negotiation' },
+  { key: 'due_diligence', label: '6. Due Diligence & Transaction' },
+  { key: 'settlement_closure', label: '7. Settlement & Closure' },
+  { key: 'withdrawn_dormant', label: '8. Withdrawn or Dormant' },
+]
+
+// Phase 13.6c — unified 14-stage Buyer Journey ladder.
+// Labels are a verbatim mirror of Notion LEADS "Pipeline Stage" and DEALS "Deal Phase".
+// Keys mirror the buyer_pipeline_stage Postgres enum (loi_ioi retained as legacy key for stage 7).
+export type BuyerPipelineStage =
+  | 'inquiry' | 'initial_response_sent' | 'nda_executed' | 'buyer_profile_received'
+  | 'qualified_buyer' | 'cim_review' | 'loi_ioi' | 'under_contract' | 'due_diligence'
+  | 'financing_approvals' | 'closing' | 'closed_won' | 'closed_lost' | 'withdrawn'
+
+export const BUYER_PIPELINE_STAGES: { key: BuyerPipelineStage; label: string }[] = [
+  { key: 'inquiry', label: '1. Inquiry' },
+  { key: 'initial_response_sent', label: '2. Initial Response Sent' },
+  { key: 'nda_executed', label: '3. NDA Executed' },
+  { key: 'buyer_profile_received', label: '4. Buyer Profile Received' },
+  { key: 'qualified_buyer', label: '5. Qualified Buyer / POF' },
+  { key: 'cim_review', label: '6. CIM Review' },
+  { key: 'loi_ioi', label: '7. LOI Negotiation' },
+  { key: 'under_contract', label: '8. Under Contract' },
+  { key: 'due_diligence', label: '9. Due Diligence' },
+  { key: 'financing_approvals', label: '10. Financing / Approvals' },
+  { key: 'closing', label: '11. Closing' },
+  { key: 'closed_won', label: '12. Closed Won' },
+  { key: 'closed_lost', label: '13. Closed Lost' },
+  { key: 'withdrawn', label: '14. Withdrawn / No longer pursuing' },
 ]
 
 export interface DealWithCounts extends Deal {

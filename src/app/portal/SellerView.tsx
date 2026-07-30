@@ -62,6 +62,7 @@ interface ListingPayload {
   annual_revenue: number | null
   ebitda: number | null
   sde: number | null
+  inventory: number | null
   stage: string | null
   days_on_market: number
   listed_on: string | null
@@ -107,10 +108,19 @@ interface BuyerLeadRow {
   nda_signed: boolean
   source: string | null
   buyer_type: string | null
+  buyer_quality: string | null
   date_received: string | null
   fit_rating: number | string | null
   motivation_rating: number | string | null
+  buyer_profile_url: string | null
   last_active: string | null
+}
+
+const QUALITY_BADGE: Record<string, string> = {
+  a: 'bg-green-50 text-green-700 border-green-200',
+  b: 'bg-blue-50 text-blue-700 border-blue-200',
+  c: 'bg-amber-50 text-amber-700 border-amber-200',
+  d: 'bg-slate-50 text-slate-500 border-slate-200',
 }
 
 interface MyListingRow {
@@ -128,6 +138,7 @@ interface DashboardPayload {
   documents: DocumentRow[]
   buyers?: BuyerLeadRow[]
   my_listings?: MyListingRow[]
+  buyer_info_folder_url?: string | null
   generated_at: string
 }
 
@@ -369,7 +380,7 @@ export default function SellerView({ listingId, contactName, onSignOut }: Seller
           </div>
 
           {/* Price + financial stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 pt-6 border-t border-slate-100">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-6 pt-6 border-t border-slate-100">
             <div>
               <p className="text-xs text-slate-500 uppercase tracking-wide">Asking Price</p>
               <p className="text-lg font-bold text-slate-900 mt-1">
@@ -392,6 +403,12 @@ export default function SellerView({ listingId, contactName, onSignOut }: Seller
               <p className="text-xs text-slate-500 uppercase tracking-wide">EBITDA (TTM)</p>
               <p className="text-lg font-bold text-slate-900 mt-1">
                 {formatUsd(listing.ebitda)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500 uppercase tracking-wide">Inventory</p>
+              <p className="text-lg font-bold text-slate-900 mt-1">
+                {formatUsd(listing.inventory)}
               </p>
             </div>
           </div>
@@ -447,14 +464,26 @@ export default function SellerView({ listingId, contactName, onSignOut }: Seller
 
             {/* Buyer leads — Phase 13.5 (identity disclosed post-NDA) */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-200 bg-slate-50">
-                <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
-                  👥 Buyer Leads
-                  <span className="text-sm font-normal text-slate-500">({buyers.length})</span>
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Buyer identities are disclosed once their NDA is executed.
-                </p>
+              <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                    👥 Buyer Leads
+                    <span className="text-sm font-normal text-slate-500">({buyers.length})</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Buyer identities and profiles are disclosed once their NDA is executed.
+                  </p>
+                </div>
+                {dashboard.buyer_info_folder_url && (
+                  <a
+                    href={dashboard.buyer_info_folder_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap mt-1"
+                  >
+                    📁 Buyer Information folder ↗
+                  </a>
+                )}
               </div>
               {buyers.length === 0 ? (
                 <p className="px-6 py-8 text-sm text-slate-500 italic text-center">
@@ -465,7 +494,7 @@ export default function SellerView({ listingId, contactName, onSignOut }: Seller
                   <table className="w-full">
                     <thead>
                       <tr className="bg-slate-50 border-b border-slate-200">
-                        {['Name', 'Date Received', 'Source', 'Buyer Type', 'Status', 'Fit', 'Motivation'].map((h) => (
+                        {['Name', 'Date Received', 'Source', 'Buyer Type', 'Status', 'Quality', 'Fit', 'Motivation', 'Profile'].map((h) => (
                           <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase whitespace-nowrap">
                             {h}
                           </th>
@@ -495,11 +524,34 @@ export default function SellerView({ listingId, contactName, onSignOut }: Seller
                               {STAGE_LABELS[b.stage] || b.stage}
                             </span>
                           </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            {b.buyer_quality ? (
+                              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border uppercase ${QUALITY_BADGE[b.buyer_quality.toLowerCase()] || QUALITY_BADGE.d}`}>
+                                {b.buyer_quality}
+                              </span>
+                            ) : (
+                              <span className="text-sm text-slate-400">—</span>
+                            )}
+                          </td>
                           <td className="px-4 py-3 text-sm text-slate-600 whitespace-nowrap">
                             {b.fit_rating != null && b.fit_rating !== '' ? String(b.fit_rating) : '—'}
                           </td>
                           <td className="px-4 py-3 text-sm text-slate-600 whitespace-nowrap">
                             {b.motivation_rating != null && b.motivation_rating !== '' ? String(b.motivation_rating) : '—'}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            {b.buyer_profile_url ? (
+                              <a
+                                href={b.buyer_profile_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-xs px-2 py-1 font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200"
+                              >
+                                View ↗
+                              </a>
+                            ) : (
+                              <span className="text-sm text-slate-400">{b.nda_signed ? '—' : '🔒'}</span>
+                            )}
                           </td>
                         </tr>
                       ))}

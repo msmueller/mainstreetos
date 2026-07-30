@@ -26,13 +26,19 @@ const LISTING_STATUS: Record<string, DealStatus> = {
   closed_lost: 'closed',
 }
 
+// Phase 13.6 — crosswalk: seller_listing_stage → canonical Deal Stage (Notion parity)
 const LISTING_SELLER_STAGE: Record<string, SellerStage> = {
+  sourcing: 'prospecting',
+  qualifying: 'prospecting',
+  valuation: 'discovery_valuation',
   mandate: 'engagement',
-  qualifying: 'discovery_valuation',
   active: 'packaging_marketing',
+  under_loi: 'offers_negotiation',
   under_contract: 'due_diligence',
+  closing: 'settlement_closure',
   closed_won: 'settlement_closure',
-  closed_lost: 'settlement_closure',
+  closed_lost: 'withdrawn_dormant',
+  on_hold: 'withdrawn_dormant',
 }
 
 const DEAL_TYPES: DealType[] = [
