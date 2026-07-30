@@ -423,6 +423,14 @@ export default function SellerView({ listingId, contactName, onSignOut }: Seller
           <StatTile label="In Due Diligence" value={engagement.in_due_diligence} color="#F97316" />
         </div>
 
+        {/* NDA disclosure liner note */}
+        <p className="text-xs italic text-slate-400 -mt-3 mb-6">
+          For confidentiality, only buyers who have signed an NDA are included in the named buyer
+          list below. Buyers who have not yet signed an NDA are reflected in the counts above but
+          are not listed individually. &ldquo;Inquiry&rdquo; buyers (have not signed an NDA) have
+          expressed interest only, have received our OM link, and have been contacted.
+        </p>
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left column — funnel + activity */}
           <div className="lg:col-span-2 space-y-6">
