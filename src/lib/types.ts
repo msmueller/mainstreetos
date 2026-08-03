@@ -97,12 +97,24 @@ export interface FinancialLineItem {
 
 export type DealStatus = 'active' | 'under_contract' | 'closed' | 'expired' | 'withdrawn'
 export type DealType = 'business_acquisition' | 'business_disposition' | 'cre_acquisition' | 'cre_disposition'
-export type TransactionSide = 'sell_side' | 'buy_side' | 'dual_agency' | 'consulting'
+
+/**
+ * 2026-08-01 cleanup (see docs/MSOS-Entity-Architecture-and-Workflow-Model.md):
+ * DealType is the single canonical field for sell/buy classification — it
+ * mirrors Notion's own "Deal Type" field verbatim. TransactionSide and
+ * DealWorkflow used to duplicate this in two other vocabularies and have
+ * been retired; this helper replaces DealWorkflow's one real usage (the
+ * buyer-search -> /dashboard/leads redirect in pipeline-view.tsx and
+ * DealsViewSwitcher.tsx).
+ */
+export function isAcquisitionDealType(dt: DealType | null): boolean {
+  return dt === 'business_acquisition' || dt === 'cre_acquisition'
+}
+
 export type SellerStage =
   | 'prospecting' | 'engagement' | 'discovery_valuation'
   | 'packaging_marketing' | 'offers_negotiation' | 'due_diligence' | 'settlement_closure'
   | 'withdrawn_dormant'
-export type DealWorkflow = 'seller_disposition' | 'buyer_lead_management' | 'buyer_acquisition_search'
 export type ConfidentialTier = 'level_1_basic' | 'level_2_nda_required' | 'level_3_deal_room'
 export type ContactRole =
   | 'buyer' | 'seller' | 'buyer_attorney' | 'seller_attorney'
@@ -133,9 +145,7 @@ export interface Deal {
   potential_commission: number | null
   deal_status: DealStatus | null
   deal_type: DealType | null
-  transaction_side: TransactionSide | null
   seller_stage: SellerStage | null
-  deal_workflow: DealWorkflow | null
   confidential_tier: ConfidentialTier | null
   seller_contact_id: string | null
   buyer_contact_id: string | null
@@ -311,6 +321,129 @@ export const COMM_TYPE_LABELS: Record<CommunicationType, string> = {
   phone: 'Phone Call',
   note: 'Note',
   text: 'Text/SMS',
+}
+
+// ─── Projects (Consulting Side) ──────────────────────────────────────────────
+// Phase 14.4 (2026-08-02) — broker dashboard build. public.projects canonicalized
+// over public.consulting_projects (now archived) per docs/MSOS-Entity-Architecture-
+// and-Workflow-Model.md Section 4. The client-portal side (ProjectView.tsx,
+// project_access, project_deliverables) already existed from Phase 12.12-C —
+// these types mirror that real, live schema, not a new design.
+
+export type ServiceType =
+  | 'business_valuation' | 'financial_modeling' | 'business_planning' | 'cre_bpo'
+  | 'lease_abstract' | 'document_review' | 'market_analysis' | 'strategic_advisory'
+  | 'consulting_general' | 'other'
+
+export type ProjectStatus =
+  | 'inquiry' | 'proposal_sent' | 'accepted' | 'in_progress' | 'under_review'
+  | 'completed' | 'invoiced' | 'paid' | 'cancelled'
+
+// Labels are this dashboard's own — Notion PROJECTS remains source-of-record
+// (per ProjectView.tsx's own comment) and may use different labels; there is no
+// ratified Notion SOP for Projects stage vocabulary as of 2026-08-01's audit.
+export const PROJECT_STATUSES: { key: ProjectStatus; label: string }[] = [
+  { key: 'inquiry', label: '1. Inquiry' },
+  { key: 'proposal_sent', label: '2. Proposal Sent' },
+  { key: 'accepted', label: '3. Accepted' },
+  { key: 'in_progress', label: '4. In Progress' },
+  { key: 'under_review', label: '5. Under Review' },
+  { key: 'completed', label: '6. Completed' },
+  { key: 'invoiced', label: '7. Invoiced' },
+  { key: 'paid', label: '8. Paid' },
+  { key: 'cancelled', label: '9. Cancelled' },
+]
+
+export type DeliverableType =
+  | 'valuation_report' | 'financial_model' | 'business_plan' | 'market_study'
+  | 'lease_abstract' | 'memo_opinion_letter' | 'presentation' | 'cim_document'
+  | 'om_document' | 'other'
+
+export type DeliverableStatus = 'not_started' | 'in_progress' | 'under_review' | 'completed' | 'delivered'
+
+export interface Project {
+  id: string
+  broker_id: string
+  project_name: string
+  service_type: ServiceType
+  scope_description: string | null
+  client_contact_id: string | null
+  project_status: ProjectStatus
+  proposal_amount: number | null
+  actual_fee: number | null
+  payment_terms: string | null
+  date_started: string | null
+  due_date: string | null
+  date_completed: string | null
+  date_invoiced: string | null
+  date_paid: string | null
+  hours_estimated: number | null
+  hours_actual: number | null
+  lead_source: string | null
+  conversion_opportunity: string | null
+  related_deal_id: string | null
+  valuation_id: string | null
+  proposal_url: string | null
+  invoice_url: string | null
+  notes: string | null
+  scope_statement: string | null
+  engagement_type: string | null
+  billing_model: string | null
+  hourly_rate: number | null
+  retainer_amount: number | null
+  completion_percent: number | null
+  kickoff_at: string | null
+  target_completion_at: string | null
+  actual_completion_at: string | null
+  consulting_category: string | null
+  engagement_tags: string[] | null
+  // Ported from consulting_projects during the 2026-08-02 consolidation
+  notion_page_id: string | null
+  source_opportunity_id: string | null
+  source_lead_id: string | null
+  primary_business_id: string | null
+  primary_property_id: string | null
+  resulting_listing_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ProjectWithCounts extends Project {
+  client_name: string | null
+  deliverable_count: number
+  delivered_count: number
+  access_count: number
+}
+
+export interface ProjectDeliverable {
+  id: string
+  project_id: string
+  deliverable_name: string
+  deliverable_type: DeliverableType
+  description: string | null
+  status: DeliverableStatus
+  due_date: string | null
+  date_completed: string | null
+  date_delivered: string | null
+  storage_path: string | null
+  external_url: string | null
+  visible_to_client: boolean
+  notes: string | null
+  created_at: string
+}
+
+export interface ProjectAccess {
+  id: string
+  project_id: string
+  contact_id: string
+  role: ContactRole
+  portal: PortalCode
+  is_active: boolean
+  granted_by: string | null
+  granted_at: string
+  notes: string | null
+  created_at: string
+  updated_at: string
 }
 
 // ─── Subscription & Licensing ────────────────────────────────────────────────

@@ -2,11 +2,13 @@
 
 import { useState, useMemo } from 'react'
 import type { DealWithCounts, DealType, DealStatus } from '@/lib/types'
-import { SELLER_STAGES } from '@/lib/types'
+import { SELLER_STAGES, isAcquisitionDealType } from '@/lib/types'
 
-// Buyer-search rows have no deal detail route; send them to the Leads surface.
+// Buyer-search rows (deal_type = business_acquisition / cre_acquisition) have
+// no deal detail route yet; send them to the Leads surface instead. (Was
+// keyed off the now-retired deal_workflow field — see types.ts 2026-08-01.)
 const dealHref = (d: DealWithCounts) =>
-  d.deal_workflow === 'buyer_acquisition_search' ? '/dashboard/leads' : `/dashboard/deals/${d.id}`
+  isAcquisitionDealType(d.deal_type) ? '/dashboard/leads' : `/dashboard/deals/${d.id}`
 
 const formatCurrency = (value: number | null) => {
   if (!value) return '—'

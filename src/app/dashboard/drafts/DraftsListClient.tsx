@@ -4,7 +4,7 @@
 // MainStreetOS — DraftsListClient (Phase 13.2)
 // ------------------------------------------------------------
 // Client wrapper around the drafts table that adds the new
-// Attio-style ListControls bar: filter by kind (CIM/OM/BVR/BLC),
+// CRM-style ListControls bar: filter by kind (CIM/OM/BVR/BLC),
 // filter by status (pending/approved/rejected), and sort by
 // newest/oldest/kind. Server fetch stays in page.tsx; this
 // component owns the filter/sort UI state.

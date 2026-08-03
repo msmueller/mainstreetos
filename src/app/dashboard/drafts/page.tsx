@@ -7,7 +7,7 @@
 // sweep their pending_review queue across every deal.
 //
 // 13.2 update: TopBar replaces the inline header and the table
-// moves into DraftsListClient so we can wire the new Attio-style
+// moves into DraftsListClient so we can wire the new CRM-style
 // ListControls (filter by kind/status, sort by date/kind/listing).
 // ============================================================
 

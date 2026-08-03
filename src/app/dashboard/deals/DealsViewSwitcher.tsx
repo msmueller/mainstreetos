@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import type { DealWithCounts } from '@/lib/types'
+import { isAcquisitionDealType } from '@/lib/types'
 import PipelineView from './pipeline-view'
 import ListView, { type ColumnDef, type BulkAction } from '@/components/lists/ListView'
 
@@ -181,7 +182,7 @@ export default function DealsViewSwitcher({ deals }: { deals: DealWithCounts[] }
           rows={deals}
           columns={columns}
           getRowId={(r) => r.id}
-          rowHref={(r) => (r.deal_workflow === 'buyer_acquisition_search' ? '/dashboard/leads' : `/dashboard/deals/${r.id}`)}
+          rowHref={(r) => (isAcquisitionDealType(r.deal_type) ? '/dashboard/leads' : `/dashboard/deals/${r.id}`)}
           bulkActions={bulkActions}
           entityName="deal"
           entity="deals"

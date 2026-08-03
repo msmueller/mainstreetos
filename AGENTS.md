@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
 ## What is MainStreetOS
 
@@ -88,6 +88,28 @@ Supabase Auth with password-based login/signup. Server actions in `app/auth/acti
 
 Source-of-truth registry for the deal/lead pipeline. Verbatim string matching is required between Notion and MSOS so the Notion-native sync (Notion Agents/Workers + the MSOS API) never silently drops a field. **Attio and the Relay sync are retired (2026-07-14)** — MSOS holds its pipeline data directly in Supabase and connects to Notion natively, with no Attio intermediary. (Legacy: the former "Notion ↔ Attio Sync — Field Map & Flow Spec v1.0" is superseded.)
 
+**Superseded 2026-07-31 (Phase 14.0):** the single-track `Deal Phase` 10-stage model described below (ratified 2026-06-05) is retired in favor of the two-tier model actually shipped in Phase 13.6/13.6c. Kept verbatim beneath for history; do not build against it.
+
+**Current canonical stages — two separate tiers, both in `src/lib/types.ts`. Do not merge them** (Design Invariant #4: a record can live in many processes — one listing can carry several buyers at different pipeline stages simultaneously, which a single merged stage field cannot represent):
+
+- **`SELLER_STAGES`** (8 stages, Phase 13.6) — the listing/seller lifecycle: `prospecting` · `engagement` · `discovery_valuation` · `packaging_marketing` · `offers_negotiation` · `due_diligence` · `settlement_closure` · `withdrawn_dormant`. Labels are a verbatim mirror of Notion DEALS "Deal Stage." Drives the kanban/table on `/dashboard/deals` (`pipeline-view.tsx`); a stepper on `/dashboard/deals/[id]` shipped in Phase 14.1 (2026-08-01), reading/writing through `src/lib/stage-mapping.ts` since the live `seller_listings.stage` column is still on the older 11-value `seller_listing_stage` enum (see that file's header comment for the sanctioned crosswalk).
+- **`BUYER_PIPELINE_STAGES`** (14 stages, Phase 13.6c, "unified Buyer Journey ladder") — per-buyer progress on a deal: `inquiry` · `initial_response_sent` · `nda_executed` · `buyer_profile_received` · `qualified_buyer` · `cim_review` · `loi_ioi` · `under_contract` · `due_diligence` · `financing_approvals` · `closing` · `closed_won` · `closed_lost` · `withdrawn`. Labels are a verbatim mirror of Notion LEADS "Pipeline Stage" and DEALS "Deal Phase." `active_buyers`/`nda_signed_count` are already computed (`DealWithCounts`); a kanban UI ships in Phase 14.2.
+
+See `docs/Phase-14-BizScout-Gap-Close-Design-and-Build-Plan.md` for the full rationale (a BSDOS competitive comparison confirmed this two-tier split is the correct pattern) and the build sequence. See `docs/MSOS-Entity-Architecture-and-Workflow-Model.md` (2026-08-01) for the entity-level model this stage vocabulary sits on top of — what a DEAL vs. a LISTING actually is, and the ratified DealType-as-canonical decision.
+
+<details>
+<summary>Superseded 2026-07-31 — original single-track Deal Phase text, kept for history</summary>
+
 **DEALS canonical stage = `Deal Phase`** (ratified 2026-06-05). 10 stages: Inquiry · Qualification · NDA Executed · CIM Review · LOI Negotiation · Under Contract · Due Diligence · Financing / Approvals · Closing · Terminated. Retire `Deal Stage`, `Listing Engagement Stage`, `Seller Pipeline Stage`; collapse `Status` to a health field. This **supersedes** the 2026-04-22 call (which kept `Seller Pipeline Stage` + a new `Buyer Pipeline Stage` and archived `Deal Phase`) because the v1.0 Field Map conversion handoff initializes `Deal Phase`. The §6 additive `Deal Phase` options (CIM Released, Buyer Meeting, IOI, Definitive Agreement, Post-Closing) remain a held decision.
 
 **LEADS canonical stage = `Pipeline Stage`** (11 values) + `Status` (health: New · Active · Dormant · Closed · Withdrawn). Retire `Status Update` (legacy 10-stage) and `Disposition` (8-value axis folded into Pipeline Stage terminals + Status). `Source` and `Stage Entered` additive fields are live.
+
+</details>
+
+## Imported Claude Cowork project instructions
+
+Pick up from prior chats and conversations for this subject including CoWork chat titled MainStreet OS build sprint continuation.   I'm getting "stalls" and errors on previous chats and need to continue the phases on this build.
+
+**2026-07-31 update:** picked up here. A BizScout DEALOS competitive evaluation is filed at `docs/Phase-14-BizScout-Gap-Close-Design-and-Build-Plan.md` (Phase 14.0–14.7). Separately, the working tree as of 2026-07-31 carries substantial uncommitted work not yet reconciled into a commit — see that plan doc's "Existing build — uncommitted work" section before starting new feature work, so nothing already done gets redone or lost.
+
+**2026-08-01 update:** Phase 14.1 (deal-detail stage stepper) shipped, including `src/lib/stage-mapping.ts` to bridge the live `seller_listing_stage` DB enum to `SELLER_STAGES`. A full DEALS/LISTINGS/PROJECTS entity-architecture audit and ratification also happened this session — see `docs/MSOS-Entity-Architecture-and-Workflow-Model.md` for the ratified DEAL/LISTING model and the open items it flags (DealType/TransactionSide/DealWorkflow field redundancy; the one-table-vs-two-table question for Deal/Listing). **PROJECTS development is explicitly deferred** until DEALS/LISTINGS are settled — do not start Phase-15-style Projects work without checking that doc first.

@@ -3,7 +3,7 @@
 // ============================================================
 // MainStreetOS — RecordActionsMenu (Phase 13.2)
 // ------------------------------------------------------------
-// Attio-style ⋯ dropdown rendered in the TopBar rightSlot on
+// CRM-style ⋯ dropdown rendered in the TopBar rightSlot on
 // record-detail pages. Items are pluggable so deal pages can
 // surface Archive/Duplicate/Copy Link/Open in Notion while
 // valuation pages can expose Export/Archive/Duplicate, etc.
