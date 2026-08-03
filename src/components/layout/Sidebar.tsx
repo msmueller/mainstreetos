@@ -84,6 +84,13 @@ const RECORDS: RecordLink[] = [
     glyph: <BuyersGlyph />,
   },
   {
+    href: '/dashboard/projects',
+    matchPrefix: '/dashboard/projects',
+    label: 'Projects',
+    tile: { bg: 'bg-fuchsia-500', fg: 'text-white' },
+    glyph: <ProjectsGlyph />,
+  },
+  {
     href: '/dashboard/contacts',
     matchPrefix: '/dashboard/contacts',
     label: 'Contacts',
@@ -432,6 +439,17 @@ function DealsGlyph() {
   return (
     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
       <path d="M13 6.5c-.7-1-1.9-1.5-3-1.5-1.7 0-3 .9-3 2.3 0 3 6 1.7 6 4.7 0 1.4-1.3 2.5-3 2.5-1.3 0-2.5-.6-3.2-1.5M10 3.5v13" />
+    </svg>
+  )
+}
+
+function ProjectsGlyph() {
+  // briefcase (Consulting Side)
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
+      <rect x="3" y="7" width="14" height="9" rx="1.5" />
+      <path d="M7.5 7V5.5A1.5 1.5 0 0 1 9 4h2a1.5 1.5 0 0 1 1.5 1.5V7" />
+      <path d="M3 11h14" />
     </svg>
   )
 }

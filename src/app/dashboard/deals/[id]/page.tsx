@@ -7,6 +7,9 @@ import { createClient } from '@/lib/supabase/client'
 import PortalAccessPanel from '@/components/panels/PortalAccessPanel'
 import DraftReviewDrawer from '@/components/panels/DraftReviewDrawer'
 import RecordActionsMenu, { type RecordAction } from '@/components/layout/RecordActionsMenu'
+import DealStageStepper from '@/components/deals/DealStageStepper'
+import { SELLER_STAGES } from '@/lib/types'
+import { sellerStageFromDb, dbStageFromSellerStage } from '@/lib/stage-mapping'
 
 // ============================================================
 // BROKER DEAL DASHBOARD
@@ -65,6 +68,10 @@ interface Deal {
   sde: number | null
   seller_stage: string | null
   deal_status: string | null
+  // Phase 14.3 — needed to branch dual-agency disclosure copy: NJ's statutory dual-agency
+  // consent requirements (N.J.S.A. 45:15-16.92) attach to CRE deals; BIZ deals with no real
+  // property involved aren't covered by that statute. See docs/NJ-Dual-Agency-Legal-Research-2026-08-02.md.
+  deal_type: string | null
 }
 interface Buyer {
   id: string
@@ -80,6 +87,16 @@ interface Buyer {
   activity_count: number
   liquid_cash: number | null
   notes: string | null
+  // Phase 14.2 — dual agency gate (see docs/MSOS-Entity-Architecture-and-Workflow-Model.md
+  // and the deal_access_dual_agency_gate migration). Lives on deal_access because it's a
+  // fact about this specific buyer<->listing relationship, not the deal or the buyer globally.
+  agency_type: 'seller_side_only' | 'dual_agency'
+  dual_agency_disclosed_at: string | null
+  // Phase 14.3 — link to the actual signed written-consent document. NJ's dual-agency
+  // statute requires written, signed informed consent, not just a system timestamp;
+  // dual_agency_disclosed_at is MSOS's audit trail of *when* that document was executed,
+  // this is the document itself.
+  dual_agency_consent_url: string | null
 }
 interface DealDocument {
   id: string | number
@@ -107,11 +124,12 @@ const SEEDED_DEAL: Deal = {
   sde: 146630,
   seller_stage: 'packaging_marketing',
   deal_status: 'active',
+  deal_type: 'business_disposition',
 }
 const SEEDED_BUYERS: Buyer[] = [
-  { id: 'b1000001', name: 'James Rivera', email: 'jrivera@email.com', phone: '201-555-2001', current_stage: 'inquiry', portal: 'om', nda_status: 'sent', docs_visible: 3, last_activity: '2026-04-10', activity_count: 2, liquid_cash: 150000, notes: 'BBS lead. Initial inquiry, no NDA yet.' },
-  { id: 'b1000002', name: 'Sarah Chen', company: 'Chen Family Holdings LLC', email: 'schen@email.com', phone: '732-555-3002', current_stage: 'qualified', portal: 'bp', nda_status: 'signed', docs_visible: 7, last_activity: '2026-04-11', activity_count: 5, liquid_cash: 300000, notes: 'NDA signed. CIM reviewed. Qualified buyer with restaurant experience.' },
-  { id: 'b1000003', name: 'Michael Thompson', company: 'Thompson Restaurant Group', email: 'mthompson@email.com', phone: '856-555-4003', current_stage: 'loi_negotiation', portal: 'dp', nda_status: 'signed', docs_visible: 10, last_activity: '2026-04-11', activity_count: 9, liquid_cash: 500000, notes: 'LOI submitted. In negotiation. Has SBA pre-approval.' },
+  { id: 'b1000001', name: 'James Rivera', email: 'jrivera@email.com', phone: '201-555-2001', current_stage: 'inquiry', portal: 'om', nda_status: 'sent', docs_visible: 3, last_activity: '2026-04-10', activity_count: 2, liquid_cash: 150000, notes: 'BBS lead. Initial inquiry, no NDA yet.', agency_type: 'seller_side_only', dual_agency_disclosed_at: null, dual_agency_consent_url: null },
+  { id: 'b1000002', name: 'Sarah Chen', company: 'Chen Family Holdings LLC', email: 'schen@email.com', phone: '732-555-3002', current_stage: 'qualified', portal: 'bp', nda_status: 'signed', docs_visible: 7, last_activity: '2026-04-11', activity_count: 5, liquid_cash: 300000, notes: 'NDA signed. CIM reviewed. Qualified buyer with restaurant experience.', agency_type: 'dual_agency', dual_agency_disclosed_at: null, dual_agency_consent_url: null },
+  { id: 'b1000003', name: 'Michael Thompson', company: 'Thompson Restaurant Group', email: 'mthompson@email.com', phone: '856-555-4003', current_stage: 'loi_negotiation', portal: 'dp', nda_status: 'signed', docs_visible: 10, last_activity: '2026-04-11', activity_count: 9, liquid_cash: 500000, notes: 'LOI submitted. In negotiation. Has SBA pre-approval.', agency_type: 'dual_agency', dual_agency_disclosed_at: '2026-04-09T14:00:00Z', dual_agency_consent_url: 'https://example.com/docs/thompson-dual-agency-consent.pdf' },
 ]
 const SEEDED_DOCS: DealDocument[] = [
   { id: 1, name: 'Offering Memorandum', type: 'om', min_stage: 'inquiry', tier: 'L1', uploaded: '2026-03-01' },
@@ -165,9 +183,18 @@ export default function BrokerDealDashboard() {
   const [activity, setActivity] = useState<ActivityEntry[]>(SEEDED_ACTIVITY)
   const [loading, setLoading] = useState(true)
   const [usingDemo, setUsingDemo] = useState(true)
+  const [updatingSellerStage, setUpdatingSellerStage] = useState(false)
+  const [sellerStageError, setSellerStageError] = useState<string | null>(null)
 
   const [activeTab, setActiveTab] = useState<'pipeline' | 'documents' | 'activity'>('pipeline')
   const [showAdvanceModal, setShowAdvanceModal] = useState<{ buyer: Buyer; nextStage: string } | null>(null)
+  const [advancingStage, setAdvancingStage] = useState(false)
+  const [advanceStageError, setAdvanceStageError] = useState<string | null>(null)
+  // Phase 14.2 — dual agency gate: which buyer row is being updated + surfaced errors
+  const [updatingAgencyId, setUpdatingAgencyId] = useState<string | null>(null)
+  const [agencyError, setAgencyError] = useState<string | null>(null)
+  // Phase 14.3 — draft consent-document URL per buyer, entered before "Mark Disclosed"
+  const [consentUrlDraft, setConsentUrlDraft] = useState<Record<string, string>>({})
   const [showUploadModal, setShowUploadModal] = useState(false)
   const [showDraftDrawer, setShowDraftDrawer] = useState(false)
   const [pendingDraftCount, setPendingDraftCount] = useState(0)
@@ -232,8 +259,15 @@ export default function BrokerDealDashboard() {
             asking_price: listingRow.asking_price_usd != null ? Number(listingRow.asking_price_usd) : null,
             annual_revenue: listingRow.revenue_ttm_usd != null ? Number(listingRow.revenue_ttm_usd) : null,
             sde: listingRow.sde_ttm_usd != null ? Number(listingRow.sde_ttm_usd) : null,
-            seller_stage: (listingRow.stage as string) || null,
+            // Phase 14.1b — seller_listings.stage is a live 11-value DB enum
+            // that predates the 8-value SELLER_STAGES taxonomy; translate
+            // rather than pass the raw DB value straight through.
+            seller_stage: sellerStageFromDb(listingRow.stage as string | null),
             deal_status: 'active',
+            // Phase 14.3 — drives CRE-vs-BIZ dual-agency disclosure copy (see
+            // docs/NJ-Dual-Agency-Legal-Research-2026-08-02.md). custom_fields.deal_type
+            // mirrors the same convention used in dashboard/deals/page.tsx.
+            deal_type: typeof custom.deal_type === 'string' ? custom.deal_type : 'business_disposition',
           })
           setLinkedValuationId((listingRow.valuation_id as string) ?? null)
           // Live listing — keep live=true so the OM draft button is enabled
@@ -260,12 +294,20 @@ export default function BrokerDealDashboard() {
             phone: (c.phone as string) || null,
             current_stage: (r.current_stage as string) || 'inquiry',
             portal: (r.portal as string) || 'om',
-            nda_status: (r.nda_status as string) || 'sent',
+            // Phase 14.3 fix — deal_access has a boolean nda_signed column (+ nda_signed_date),
+            // not a text nda_status field. The UI's nda_status vocabulary only ever checks for
+            // 'signed' vs. anything else, so this derives it directly instead of reading a
+            // column that doesn't exist (which silently always fell back to 'sent').
+            nda_status: r.nda_signed ? 'signed' : 'sent',
             docs_visible: (r.docs_visible as number) || 0,
             last_activity: (r.last_activity as string) || null,
             activity_count: (r.activity_count as number) || 0,
             liquid_cash: (c.liquid_cash as number) || null,
             notes: (r.notes as string) || null,
+            // Phase 14.2 / 14.3 — dual agency gate columns added by deal_access_dual_agency_gate migration
+            agency_type: (r.agency_type as string) === 'dual_agency' ? 'dual_agency' : 'seller_side_only',
+            dual_agency_disclosed_at: (r.dual_agency_disclosed_at as string) || null,
+            dual_agency_consent_url: (r.dual_agency_consent_url as string) || null,
           }
         })
         setBuyers(mapped)
@@ -403,6 +445,35 @@ export default function BrokerDealDashboard() {
     }
   }
 
+  // Phase 14.1 — Deal-detail stage stepper ("Move stage"). Writes always
+  // target seller_listings (see the deals->seller_listings fallback above);
+  // if a record is ever actually served from `deals` instead, this write
+  // would need to target that table's own seller_stage column — unverified
+  // edge case, flagged rather than guessed at.
+  //
+  // Phase 14.1b — seller_listings.stage is a live Postgres enum with values
+  // that predate SELLER_STAGES, so the SELLER_STAGES key picked in the
+  // stepper is translated back to a valid DB enum value before the write;
+  // see lib/stage-mapping.ts for the mapping and the judgment calls behind it.
+  async function handleAdvanceSellerStage(newStage: string) {
+    if (!id || usingDemo || updatingSellerStage) return
+    setUpdatingSellerStage(true)
+    setSellerStageError(null)
+    try {
+      const dbStage = dbStageFromSellerStage(newStage as Parameters<typeof dbStageFromSellerStage>[0])
+      const { error } = await supabase
+        .from('seller_listings')
+        .update({ stage: dbStage })
+        .eq('id', id)
+      if (error) throw new Error(error.message)
+      setDeal((prev) => ({ ...prev, seller_stage: newStage }))
+    } catch (err) {
+      setSellerStageError(err instanceof Error ? err.message : 'Failed to update deal stage')
+    } finally {
+      setUpdatingSellerStage(false)
+    }
+  }
+
   async function handleGenerateOmDraft() {
     if (!id || generatingOm) return
     setGeneratingOm(true)
@@ -443,19 +514,113 @@ export default function BrokerDealDashboard() {
     }
   }
 
+  // Phase 14.2 — fixed to actually surface RPC failures instead of always doing an
+  // optimistic update. This matters now because advance_buyer_stage() (the
+  // deal_access_dual_agency_gate migration) raises an exception when a buyer marked
+  // dual_agency tries to advance past 'qualified' without a recorded disclosure — if we
+  // swallowed the error here as before, the server-side gate would be invisible in the UI
+  // and would look like a silent no-op rather than a blocked action. Demo mode keeps the
+  // old always-succeeds behavior since there's no real RPC/row backing seeded buyers.
   async function handleAdvanceStage(buyer: Buyer, newStage: string) {
+    if (usingDemo) {
+      setBuyers((prev) => prev.map((b) => b.id === buyer.id ? { ...b, current_stage: newStage } : b))
+      setShowAdvanceModal(null)
+      return
+    }
+    setAdvancingStage(true)
+    setAdvanceStageError(null)
     try {
       const { error } = await supabase.rpc('advance_buyer_stage', {
         p_deal_id: deal.id,
         p_contact_id: buyer.id,
         p_new_stage: newStage,
       })
-      if (error) console.error('[advance_buyer_stage]', error.message)
-      // Optimistic update regardless of whether RPC exists (demo-friendly)
+      if (error) throw new Error(error.message)
       setBuyers((prev) => prev.map((b) => b.id === buyer.id ? { ...b, current_stage: newStage } : b))
-    } finally {
       setShowAdvanceModal(null)
-      if (!usingDemo) loadAll()
+      loadAll()
+    } catch (err) {
+      // Keep the modal open and show the failure — this is how the dual-agency gate
+      // (and any other advance_buyer_stage validation) becomes visible to the broker.
+      setAdvanceStageError(err instanceof Error ? err.message : 'Failed to advance buyer stage')
+    } finally {
+      setAdvancingStage(false)
+    }
+  }
+
+  // Phase 14.2 — dual agency gate: writes directly to deal_access (not through the RPC,
+  // which only handles stage advancement) since agency_type/dual_agency_disclosed_at are
+  // per-buyer-per-listing facts, not stage transitions. Setting agency_type back to
+  // seller_side_only also clears any prior disclosure timestamp — a fresh disclosure
+  // would be needed if this buyer is ever marked dual_agency again later.
+  async function handleSetAgencyType(buyer: Buyer, agencyType: 'seller_side_only' | 'dual_agency') {
+    setUpdatingAgencyId(buyer.id)
+    setAgencyError(null)
+    try {
+      // Reverting to seller_side_only clears both the disclosure timestamp and the linked
+      // consent document — a fresh written consent would be needed if this buyer is ever
+      // marked dual_agency again later (NJ's consent requirement is per-representation, not
+      // a one-time-ever acknowledgment).
+      const clearedFields = agencyType === 'seller_side_only'
+        ? { dual_agency_disclosed_at: null, dual_agency_consent_url: null }
+        : {}
+      if (usingDemo) {
+        setBuyers((prev) => prev.map((b) => b.id === buyer.id ? { ...b, agency_type: agencyType, ...clearedFields } : b))
+        return
+      }
+      const { error } = await supabase
+        .from('deal_access')
+        .update({ agency_type: agencyType, ...clearedFields })
+        .eq('deal_id', deal.id)
+        .eq('contact_id', buyer.id)
+      if (error) throw new Error(error.message)
+      setBuyers((prev) => prev.map((b) => b.id === buyer.id ? { ...b, agency_type: agencyType, ...clearedFields } : b))
+    } catch (err) {
+      setAgencyError(err instanceof Error ? err.message : 'Failed to update agency type')
+    } finally {
+      setUpdatingAgencyId(null)
+    }
+  }
+
+  // Phase 14.3 — per docs/NJ-Dual-Agency-Legal-Research-2026-08-02.md, NJ's dual-agency
+  // consent requirement (for CRE deals) means a written, signed document — dual_agency_disclosed_at
+  // is this system's audit trail of when that document was executed, consentUrl is a link to
+  // the document itself. consentUrl is optional here (BIZ deals aren't statutorily required to
+  // have one, and the document may live somewhere this system can't fetch) but strongly encouraged
+  // for CRE deals via the UI copy.
+  async function handleRecordDualAgencyDisclosure(buyer: Buyer, consentUrl?: string) {
+    setUpdatingAgencyId(buyer.id)
+    setAgencyError(null)
+    try {
+      const disclosedAt = new Date().toISOString()
+      const trimmedUrl = consentUrl?.trim() || null
+      if (usingDemo) {
+        setBuyers((prev) => prev.map((b) => b.id === buyer.id
+          ? { ...b, dual_agency_disclosed_at: disclosedAt, dual_agency_consent_url: trimmedUrl ?? b.dual_agency_consent_url }
+          : b))
+        return
+      }
+      const { error } = await supabase
+        .from('deal_access')
+        .update({
+          dual_agency_disclosed_at: disclosedAt,
+          ...(trimmedUrl ? { dual_agency_consent_url: trimmedUrl } : {}),
+        })
+        .eq('deal_id', deal.id)
+        .eq('contact_id', buyer.id)
+      if (error) throw new Error(error.message)
+      setBuyers((prev) => prev.map((b) => b.id === buyer.id
+        ? { ...b, dual_agency_disclosed_at: disclosedAt, dual_agency_consent_url: trimmedUrl ?? b.dual_agency_consent_url }
+        : b))
+      setConsentUrlDraft((prev) => {
+        const next = { ...prev }
+        delete next[buyer.id]
+        return next
+      })
+    } catch (err) {
+      setAgencyError(err instanceof Error ? err.message : 'Failed to record dual agency disclosure')
+    } finally {
+      setUpdatingAgencyId(null)
     }
   }
 
@@ -637,6 +802,15 @@ export default function BrokerDealDashboard() {
             </div>
           </div>
 
+          <DealStageStepper
+            stages={SELLER_STAGES}
+            currentKey={deal.seller_stage}
+            onSelectStage={handleAdvanceSellerStage}
+            disabled={usingDemo}
+            updating={updatingSellerStage}
+            error={sellerStageError}
+          />
+
           {/* Phase 12.14b — Linked Valuation picker. Drives CIM rich/lean mode. */}
           {!usingDemo && (
             <div className="mt-4 border border-slate-200 rounded-lg bg-white px-4 py-3">
@@ -789,6 +963,11 @@ export default function BrokerDealDashboard() {
       <div className="max-w-7xl mx-auto px-6 py-6">
         {activeTab === 'pipeline' && (
           <div className="space-y-4">
+            {agencyError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">
+                {agencyError}
+              </div>
+            )}
             {buyers.map((buyer) => {
               const stageIdx = STAGE_ORDER.indexOf(buyer.current_stage)
               const nextStage = stageIdx < STAGE_ORDER.length - 1 ? STAGE_ORDER[stageIdx + 1] : null
@@ -815,7 +994,7 @@ export default function BrokerDealDashboard() {
                         </span>
                         {nextStage && (
                           <button
-                            onClick={() => setShowAdvanceModal({ buyer, nextStage })}
+                            onClick={() => { setAdvanceStageError(null); setShowAdvanceModal({ buyer, nextStage }) }}
                             className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
                           >
                             Advance → {STAGE_LABELS[nextStage]}
@@ -824,14 +1003,93 @@ export default function BrokerDealDashboard() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-6 gap-4 mt-4 pt-4 border-t border-gray-100">
+                    <div className="grid grid-cols-7 gap-4 mt-4 pt-4 border-t border-gray-100">
                       <div><p className="text-xs text-gray-400">Liquidity</p><p className="text-sm font-semibold text-gray-900">{fmt(buyer.liquid_cash)}</p></div>
                       <div><p className="text-xs text-gray-400">NDA</p><p className={`text-sm font-semibold ${buyer.nda_status === 'signed' ? 'text-green-600' : 'text-amber-600'}`}>{buyer.nda_status === 'signed' ? '✓ Signed' : '⏳ Sent'}</p></div>
                       <div><p className="text-xs text-gray-400">Portal</p><p className="text-sm font-semibold text-blue-700">{buyer.portal.toUpperCase()}</p></div>
                       <div><p className="text-xs text-gray-400">Docs Visible</p><p className="text-sm font-semibold text-gray-900">{buyer.docs_visible} / {documents.length}</p></div>
                       <div><p className="text-xs text-gray-400">Activity</p><p className="text-sm font-semibold text-gray-900">{buyer.activity_count} views</p></div>
                       <div><p className="text-xs text-gray-400">Last Active</p><p className="text-sm font-semibold text-gray-900">{buyer.last_activity || '—'}</p></div>
+                      <div>
+                        <p className="text-xs text-gray-400">Agency</p>
+                        <p className={`text-sm font-semibold ${buyer.agency_type === 'dual_agency' ? 'text-purple-700' : 'text-gray-900'}`}>
+                          {buyer.agency_type === 'dual_agency' ? 'Dual Agency' : 'Seller-Side Only'}
+                        </p>
+                      </div>
                     </div>
+
+                    {buyer.agency_type === 'dual_agency' ? (() => {
+                      // Phase 14.3 — CRE deals fall under NJ's statutory dual-agency consent
+                      // requirement (N.J.S.A. 45:15-16.92); BIZ deals with no real property
+                      // involved don't, per docs/NJ-Dual-Agency-Legal-Research-2026-08-02.md.
+                      // This is a copy distinction only — the same gate applies to both, since
+                      // written consent is good practice either way.
+                      const isCre = deal.deal_type === 'cre_acquisition' || deal.deal_type === 'cre_disposition'
+                      return (
+                        <div className={`mt-3 rounded-lg border px-3 py-2 text-xs ${
+                          buyer.dual_agency_disclosed_at
+                            ? 'bg-green-50 border-green-200 text-green-700'
+                            : 'bg-amber-50 border-amber-200 text-amber-800'
+                        }`}>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span>
+                              {buyer.dual_agency_disclosed_at
+                                ? `✓ Dual agency disclosed ${new Date(buyer.dual_agency_disclosed_at).toLocaleDateString()}`
+                                : isCre
+                                  ? '⚠️ NJ requires written, signed informed consent from both parties for disclosed dual agency in real estate transactions (N.J.S.A. 45:15-16.92). Advancing this buyer past Qualified will be blocked until disclosure is recorded.'
+                                  : '⚠️ Dual agency not yet disclosed. NJ’s real estate dual-agency statute doesn’t directly apply to this business transaction, but written informed consent is still strongly recommended — consult counsel for the applicable language. Advancing this buyer past Qualified will be blocked until disclosure is recorded.'}
+                            </span>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {!buyer.dual_agency_disclosed_at && (
+                                <button
+                                  onClick={() => handleRecordDualAgencyDisclosure(buyer, consentUrlDraft[buyer.id])}
+                                  disabled={updatingAgencyId === buyer.id}
+                                  className="px-2 py-1 text-xs font-medium bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-md transition-colors"
+                                >
+                                  Mark Disclosed
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleSetAgencyType(buyer, 'seller_side_only')}
+                                disabled={updatingAgencyId === buyer.id}
+                                className="px-2 py-1 text-xs font-medium bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-50 text-slate-600 rounded-md transition-colors"
+                              >
+                                Revert to Seller-Side Only
+                              </button>
+                            </div>
+                          </div>
+                          {!buyer.dual_agency_disclosed_at && (
+                            <input
+                              type="text"
+                              placeholder="Signed consent document URL (recommended — link to the actual signed written consent)"
+                              value={consentUrlDraft[buyer.id] ?? ''}
+                              onChange={(e) => setConsentUrlDraft((prev) => ({ ...prev, [buyer.id]: e.target.value }))}
+                              className="mt-2 w-full px-2 py-1 text-xs border border-amber-300 rounded-md bg-white"
+                            />
+                          )}
+                          {buyer.dual_agency_disclosed_at && buyer.dual_agency_consent_url && (
+                            <a
+                              href={buyer.dual_agency_consent_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="mt-1 inline-block text-xs font-medium text-green-800 underline underline-offset-2"
+                            >
+                              View signed consent document ↗
+                            </a>
+                          )}
+                        </div>
+                      )
+                    })() : (
+                      <div className="mt-3 flex justify-end">
+                        <button
+                          onClick={() => handleSetAgencyType(buyer, 'dual_agency')}
+                          disabled={updatingAgencyId === buyer.id}
+                          className="text-xs text-slate-500 hover:text-slate-700 disabled:opacity-50 underline underline-offset-2"
+                        >
+                          Mark as dual agency
+                        </button>
+                      </div>
+                    )}
 
                     {buyer.notes && <p className="text-sm text-gray-500 mt-3 italic">{buyer.notes}</p>}
                   </div>
@@ -935,13 +1193,25 @@ export default function BrokerDealDashboard() {
             <p className="text-xs text-gray-500 mt-3 bg-amber-50 border border-amber-200 rounded-lg p-3">
               ⚠️ This will automatically upgrade their portal access and make additional documents visible.
             </p>
+            {advanceStageError && (
+              <p className="text-xs text-red-700 mt-3 bg-red-50 border border-red-200 rounded-lg p-3">
+                {advanceStageError}
+              </p>
+            )}
             <div className="flex gap-3 mt-5">
-              <button onClick={() => setShowAdvanceModal(null)} className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg">Cancel</button>
+              <button
+                onClick={() => { setShowAdvanceModal(null); setAdvanceStageError(null) }}
+                disabled={advancingStage}
+                className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 rounded-lg"
+              >
+                Cancel
+              </button>
               <button
                 onClick={() => handleAdvanceStage(showAdvanceModal.buyer, showAdvanceModal.nextStage)}
-                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg"
+                disabled={advancingStage}
+                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg"
               >
-                Advance Stage
+                {advancingStage ? 'Advancing…' : 'Advance Stage'}
               </button>
             </div>
           </div>

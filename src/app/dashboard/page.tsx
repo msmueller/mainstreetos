@@ -10,6 +10,7 @@ interface BrokerCounts {
   buyer_leads: number
   seller_listings: number
   pending_drafts: number
+  active_projects: number
 }
 interface RecentActivity {
   id: string
@@ -28,13 +29,15 @@ interface PinnedView {
 async function loadBrokerContext(supabase: Awaited<ReturnType<typeof createClient>>) {
   // Phase 13.2: public.deals archived — active-deal count is open seller
   // listings + active buyer engagements; listing tile counts stage='active'.
-  const [listingsAll, engagements, leads, drafts, activities, views] = await Promise.all([
+  const [listingsAll, engagements, leads, drafts, activities, views, projects] = await Promise.all([
     supabase.from('seller_listings').select('id, stage'),
     supabase.from('buyer_engagements').select('id', { count: 'exact', head: true }),
     supabase.from('buyer_leads').select('id', { count: 'exact', head: true }).not('current_stage', 'in', '("closed_won","lost")'),
     supabase.from('ai_drafts').select('id', { count: 'exact', head: true }).in('status', ['pending_review', 'draft']),
     supabase.from('activities').select('id, kind, subject, created_at, deal_id').order('created_at', { ascending: false }).limit(8),
     supabase.from('saved_views').select('id, name, scope, entity').eq('pinned_to_sidebar', true).limit(10),
+    // Phase 14.4 — Projects (Consulting Side) broker overview tile
+    supabase.from('projects').select('id', { count: 'exact', head: true }).not('project_status', 'in', '("completed","paid","cancelled")'),
   ])
 
   const listingRows = (listingsAll.data || []) as { id: string; stage: string | null }[]
@@ -47,13 +50,14 @@ async function loadBrokerContext(supabase: Awaited<ReturnType<typeof createClien
     buyer_leads: leads.count ?? 0,
     seller_listings: listingRows.filter((l) => l.stage === 'active').length,
     pending_drafts: drafts.count ?? 0,
+    active_projects: projects.count ?? 0,
   }
 
   return {
     counts,
     recent: (activities.data || []) as RecentActivity[],
     pinned: (views.data || []) as PinnedView[],
-    hasAnyBrokerData: (counts.active_deals + counts.buyer_leads + counts.seller_listings + counts.pending_drafts) > 0,
+    hasAnyBrokerData: (counts.active_deals + counts.buyer_leads + counts.seller_listings + counts.pending_drafts + counts.active_projects) > 0,
   }
 }
 
@@ -102,10 +106,11 @@ export default async function DashboardPage() {
             <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Broker Overview</h3>
             <Link href="/dashboard/deals" className="text-xs text-blue-600 hover:text-blue-800 font-medium">View all deals →</Link>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
             <BrokerTile label="Active Deals" value={brokerCtx.counts.active_deals} href="/dashboard/deals" accent="blue" />
             <BrokerTile label="Buyer Leads" value={brokerCtx.counts.buyer_leads} href="/dashboard/leads" accent="purple" />
             <BrokerTile label="Seller Listings" value={brokerCtx.counts.seller_listings} href="/dashboard/listings" accent="emerald" />
+            <BrokerTile label="Active Projects" value={brokerCtx.counts.active_projects} href="/dashboard/projects" accent="fuchsia" />
             <BrokerTile
               label="Pending AI Drafts"
               value={brokerCtx.counts.pending_drafts}
@@ -296,7 +301,7 @@ function BrokerTile({
   label: string
   value: number
   href: string
-  accent?: 'blue' | 'purple' | 'emerald' | 'amber'
+  accent?: 'blue' | 'purple' | 'emerald' | 'amber' | 'fuchsia'
   urgent?: boolean
 }) {
   const accentClass: Record<string, string> = {
@@ -304,6 +309,7 @@ function BrokerTile({
     purple: 'text-purple-600',
     emerald: 'text-emerald-600',
     amber: 'text-amber-600',
+    fuchsia: 'text-fuchsia-600',
   }
   return (
     <Link
@@ -326,6 +332,7 @@ function viewHref(v: { entity: string | null; scope: string | null; id: string }
     buyer_leads: '/dashboard/leads',
     seller_listings: '/dashboard/listings',
     contacts: '/dashboard/contacts',
+    projects: '/dashboard/projects',
   }
   const base = v.entity && entityRoute[v.entity] ? entityRoute[v.entity] : '/dashboard'
   return `${base}?view=${v.id}`
