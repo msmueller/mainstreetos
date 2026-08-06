@@ -34,6 +34,9 @@ type Props = {
   listingTitle: string;
   omLink: string;
   blurb: string;
+  location: string;
+  listingBrokers: string;
+  listingRefNumber: string;
   templateSource: any;
   fieldsSchema: FieldSpec[];
   disclosure: { versionLabel: string; text: string };
@@ -50,6 +53,7 @@ declare global {
 export default function PublicNdaClient(props: Props) {
   const {
     slug, businessName, listingTitle, omLink, blurb,
+    location, listingBrokers, listingRefNumber,
     templateSource, fieldsSchema, disclosure, turnstileSiteKey,
   } = props;
 
@@ -266,7 +270,10 @@ export default function PublicNdaClient(props: Props) {
 
             <div className="doc-listing-strip">
               <span><strong>Business:</strong> {businessName}</span>
+              {location && <span><strong>Location:</strong> {location}</span>}
+              {listingBrokers && <span><strong>Listing Broker(s):</strong> {listingBrokers}</span>}
               {listingTitle && <span><strong>Opportunity:</strong> {listingTitle}</span>}
+              {listingRefNumber && <span><strong>Listing #:</strong> {listingRefNumber}</span>}
               {omLink && <span><a href={omLink} target="_blank" rel="noopener noreferrer" className="brand-link">View overview →</a></span>}
             </div>
 

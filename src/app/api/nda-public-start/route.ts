@@ -223,6 +223,8 @@ async function handleSubmit(
     const filledValues: Record<string, any> = {
       ...BROKER_DEFAULTS,
       business_name:    businessName,
+      location:         ctx.display.location ?? '',
+      listing_brokers:  ctx.display.listing_brokers ?? '',
       listing_ref_number: listing.listing_number ?? '',
       description:      ctx.display.listing_title ?? '',
       effective_date:   new Date().toISOString().slice(0, 10),
