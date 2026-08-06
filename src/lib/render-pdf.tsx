@@ -374,6 +374,12 @@ function SignedDocument({
   const lh = t.letterhead;
   const ls = t.listing_strip;
 
+  // Per-template website link (Arrow for the CRE variant), falling back to the
+  // global CRE Resources site when a template carries no broker_web.
+  const brokerWeb = (lh?.broker_web && String(lh.broker_web).trim()) || 'https://creresources.biz';
+  const brokerWebHref = /^https?:\/\//i.test(brokerWeb) ? brokerWeb : `https://${brokerWeb}`;
+  const brokerWebLabel = brokerWeb.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+
   return (
     <Document
       title={`NDA — ${v.business_name ?? 'Confidential'} — Envelope ${input.envelopeNumber}`}
@@ -405,7 +411,7 @@ function SignedDocument({
                 {' · '}
                 {lh?.broker_email ?? ''}
                 {' · '}
-                <Link src="https://creresources.biz" style={styles.letterheadLink}>creresources.biz</Link>
+                <Link src={brokerWebHref} style={styles.letterheadLink}>{brokerWebLabel}</Link>
               </Text>
             </View>
             {poweredByLogoDataUri && (

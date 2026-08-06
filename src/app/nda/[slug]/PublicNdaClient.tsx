@@ -18,6 +18,7 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import SignaturePad from '@/components/SignaturePad';
+import { GLOBAL_BROKER_BRAND, type TemplateLetterhead } from '@/lib/letterhead';
 
 type FieldSpec = {
   name: string;
@@ -37,6 +38,8 @@ type Props = {
   location: string;
   listingBrokers: string;
   listingRefNumber: string;
+  businessLabel: string;
+  letterhead: TemplateLetterhead | null;
   templateSource: any;
   fieldsSchema: FieldSpec[];
   disclosure: { versionLabel: string; text: string };
@@ -53,9 +56,17 @@ declare global {
 export default function PublicNdaClient(props: Props) {
   const {
     slug, businessName, listingTitle, omLink, blurb,
-    location, listingBrokers, listingRefNumber,
+    location, listingBrokers, listingRefNumber, businessLabel, letterhead,
     templateSource, fieldsSchema, disclosure, turnstileSiteKey,
   } = props;
+
+  // Per-template letterhead (e.g. Arrow Real Estate for the CRE variant),
+  // falling back to the global CRE Resources brand when a template carries none.
+  const lh = letterhead ?? GLOBAL_BROKER_BRAND;
+  const lhCompany   = lh.broker_company   || GLOBAL_BROKER_BRAND.broker_company;
+  const lhPrincipal = lh.broker_principal || GLOBAL_BROKER_BRAND.broker_principal;
+  const lhMeta = [lh.broker_address, lh.broker_phone, lh.broker_email]
+    .filter(Boolean).join(' · ');
 
   const [fieldValues, setFieldValues] = useState<Record<string, any>>({});
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
@@ -264,12 +275,12 @@ export default function PublicNdaClient(props: Props) {
         <section className="document-panel" ref={documentRef}>
           <article className="document">
             <header className="doc-letterhead">
-              <div className="doc-broker-line"><strong>CRE Resources, LLC</strong> | Mark S. Mueller, CAIBVS™</div>
-              <div className="doc-broker-meta">Titusville, NJ 08560 · 856.745.9706 · markm@creresources.biz</div>
+              <div className="doc-broker-line"><strong>{lhCompany}</strong> | {lhPrincipal}</div>
+              <div className="doc-broker-meta">{lhMeta}</div>
             </header>
 
             <div className="doc-listing-strip">
-              <span><strong>Business:</strong> {businessName}</span>
+              <span><strong>{businessLabel}:</strong> {businessName}</span>
               {location && <span><strong>Location:</strong> {location}</span>}
               {listingBrokers && <span><strong>Listing Broker(s):</strong> {listingBrokers}</span>}
               {listingTitle && <span><strong>Opportunity:</strong> {listingTitle}</span>}
