@@ -68,6 +68,9 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
       listingTitle={listing.listing_title ?? ''}
       omLink={listing.om_link ?? ''}
       blurb={listing.blurb ?? ''}
+      location={listing.location ?? ''}
+      listingBrokers={listing.listing_brokers ?? ''}
+      listingRefNumber={listing.listing_number ?? ''}
       templateSource={template.source}
       fieldsSchema={(template.fields_schema ?? []) as any[]}
       disclosure={{
