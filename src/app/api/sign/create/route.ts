@@ -33,6 +33,7 @@ import { Client as NotionClient } from '@notionhq/client';
 import { generateSigningToken, buildSigningUrl, sha256Hex } from '@/lib/signing-tokens';
 import { logEvent, attributionFromRequest } from '@/lib/audit-log';
 import { sendSigningInvitation } from '@/lib/email';
+import { brokerValuesFromLetterhead, letterheadFromSource } from '@/lib/letterhead';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -119,8 +120,10 @@ export async function POST(req: NextRequest) {
     // envelopes had no notion_lead_id. Sell-side NDA envelopes MUST carry
     // both IDs so the completion → Notion write-back can fire. Test envelopes
     // must opt out explicitly with allowUnlinked: true.
-    const SELL_SIDE_NDA_TEMPLATES = ['NDA_BuyerProfile', 'NDA_BuyerProfile_Corporate'];
-    const isSellSideNda = SELL_SIDE_NDA_TEMPLATES.includes(effectiveTemplateKey);
+    // Any NDA + Buyer Profile variant (Standard / Corporate / CRE) is a
+    // sell-side NDA and must carry Notion linkage — matched by family, not an
+    // exact-key whitelist, so new variants are covered without a code change.
+    const isSellSideNda = effectiveTemplateKey.startsWith('NDA_BuyerProfile');
     if (isSellSideNda && !allowUnlinked && (!notionLeadId || !notionListingId)) {
       return json({
         error: 'notionLeadId and notionListingId are required for sell-side NDA envelopes',
@@ -133,7 +136,7 @@ export async function POST(req: NextRequest) {
     // ----- 1. Resolve template (latest active version) ---------------------
     const { data: template, error: tplErr } = await supabase
       .from('sign_templates')
-      .select('id, template_key, version, fields_schema, source_sha256, disclosure_version_id')
+      .select('id, template_key, version, source, fields_schema, source_sha256, disclosure_version_id')
       .eq('template_key', effectiveTemplateKey)
       .eq('active', true)
       .order('version', { ascending: false })
@@ -169,6 +172,9 @@ export async function POST(req: NextRequest) {
     // ----- 3. Build prefilled values --------------------------------------
     const filledValues: Record<string, unknown> = {
       ...BROKER_DEFAULTS,
+      // Per-template letterhead (e.g. Arrow Real Estate for the CRE variant)
+      // overrides the global CRER broker_* identity for the signed PDF.
+      ...brokerValuesFromLetterhead(letterheadFromSource(template.source)),
       ...listingFields,
       ...buyerClientFields,
       effective_date:   new Date().toISOString().slice(0, 10),

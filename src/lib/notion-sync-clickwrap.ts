@@ -94,11 +94,13 @@ export async function syncCompletedSignatureToNotion(
     return { ok: false, skipped: 'flag_off' };
   }
 
-  // Phase 8 (2026-06-01): NDA_BuyerProfile_Corporate uses the same Notion
-  // LEADS property set as NDA_BuyerProfile (only the buyer_profile_section
-  // depth differs), so both templates flow through the same mapping.
-  const KNOWN_SELL_SIDE_TEMPLATES = ['NDA_BuyerProfile', 'NDA_BuyerProfile_Corporate'];
-  if (!KNOWN_SELL_SIDE_TEMPLATES.includes(templateKey)) {
+  // Every NDA + Buyer Profile variant (Standard / Corporate / CRE) shares the
+  // same core LEADS property set — only the profile depth and a few overlay
+  // fields differ. Match generically by family rather than an exact-key
+  // whitelist so a new variant (e.g. NDA_BuyerProfile_CRE) syncs without a code
+  // change. Variant-specific fields with no mapping below (e.g. cre_*) are
+  // simply not written — never an error.
+  if (!templateKey.startsWith('NDA_BuyerProfile')) {
     console.warn(`[notion-sync] templateKey '${templateKey}' has no mapping yet; skipping property update.`);
     return { ok: false, skipped: 'unknown_template' };
   }
@@ -184,6 +186,12 @@ function buildPropertyPatch(args: {
   }
   if (text(v.buyer_company)) {
     patch['Buyer Company'] = richText(v.buyer_company);
+  }
+  // buyer_lead_name (the CRE variant's "Buyer(s) Name" identity field) maps to
+  // the LEADS title property, 'Lead Name'. Only set when provided so a blank
+  // never clobbers the title assigned at lead creation.
+  if (text(v.buyer_lead_name)) {
+    patch['Lead Name'] = { title: [{ type: 'text', text: { content: String(v.buyer_lead_name).trim() } }] };
   }
   if (text(v.business_experience)) {
     patch['Business Experience'] = richText(v.business_experience);

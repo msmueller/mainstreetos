@@ -33,6 +33,7 @@ import { attributionFromRequest, logEvent } from '@/lib/audit-log';
 import { completeSigning } from '@/lib/complete-signing';
 import { verifyTurnstile, issueEmailOtp, verifyEmailOtp } from '@/lib/anti-abuse';
 import { findOrCreatePublicNdaLead } from '@/lib/notion-lead-upsert';
+import { brokerValuesFromLetterhead, letterheadFromSource } from '@/lib/letterhead';
 
 export const runtime = 'nodejs';
 
@@ -144,17 +145,20 @@ async function handleSubmit(
     return json({ error: 'email verification failed; request a new code', reason: otp.reason }, 401);
   }
 
-  // Resolve the active template for this listing.
+  // Resolve the active template for this listing — generic lookup by the
+  // listing's default_sign_template_key (no key whitelist). Fall back to the
+  // standard NDA only when the listing carries no template key.
+  const templateKey: string = listing.default_sign_template_key || 'NDA_BuyerProfile';
   const { data: template, error: tplErr } = await supabase
     .from('sign_templates')
     .select('id, template_key, version, source, fields_schema, disclosure_version_id')
-    .eq('template_key', listing.default_sign_template_key)
+    .eq('template_key', templateKey)
     .eq('active', true)
     .order('version', { ascending: false })
     .limit(1)
     .single();
   if (tplErr || !template) {
-    return json({ error: `template not available: ${listing.default_sign_template_key}` }, 500);
+    return json({ error: `template not available: ${templateKey}` }, 500);
   }
 
   const { data: disclosure, error: disErr } = await supabase
@@ -220,8 +224,12 @@ async function handleSubmit(
 
   try {
     // ---- Build broker/listing prefill (buyer values merge in at render) -----
+    // Per-template letterhead (e.g. Arrow Real Estate for the CRE variant)
+    // overrides the global CRER broker_* defaults so the letterhead render AND
+    // the signed-PDF broker signature block carry the template's own identity.
     const filledValues: Record<string, any> = {
       ...BROKER_DEFAULTS,
+      ...brokerValuesFromLetterhead(letterheadFromSource(template.source)),
       business_name:    businessName,
       location:         ctx.display.location ?? '',
       listing_brokers:  ctx.display.listing_brokers ?? '',
@@ -413,7 +421,9 @@ async function getEnabledListing(slug: string): Promise<any | null> {
     console.error('[nda-public-start] listing lookup failed:', error.message);
     return null;
   }
-  if (!data || !data.default_sign_template_key) return null;
+  // A null default_sign_template_key is tolerated — the caller falls back to
+  // the standard NDA template. Only a missing/disabled listing returns null.
+  if (!data) return null;
   return data;
 }
 

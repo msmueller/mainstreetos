@@ -18,6 +18,7 @@
 import { notFound } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 import PublicNdaClient from './PublicNdaClient';
+import { businessStripLabel, letterheadFromSource } from '@/lib/letterhead';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -41,13 +42,17 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
   // 1. Listing (via the public RPC — whitelisted fields only).
   const { data: rpcRows, error: rpcErr } = await supabase.rpc('get_public_listing_by_slug', { p_slug: slug });
   const listing = Array.isArray(rpcRows) ? rpcRows[0] : rpcRows;
-  if (rpcErr || !listing || !listing.template_key) notFound();
+  if (rpcErr || !listing) notFound();
 
-  // 2. Active template for this listing.
+  // 2. Active template for this listing — resolve generically by the listing's
+  //    default_sign_template_key (surfaced by the RPC as template_key). No key
+  //    whitelist: any active template resolves. Fall back to the standard NDA
+  //    only when the listing carries no template key at all.
+  const templateKey: string = listing.template_key || 'NDA_BuyerProfile';
   const { data: template, error: tplErr } = await supabase
     .from('sign_templates')
     .select('template_key, version, source, fields_schema, disclosure_version_id')
-    .eq('template_key', listing.template_key)
+    .eq('template_key', templateKey)
     .eq('active', true)
     .order('version', { ascending: false })
     .limit(1)
@@ -71,6 +76,8 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
       location={listing.location ?? ''}
       listingBrokers={listing.listing_brokers ?? ''}
       listingRefNumber={listing.listing_number ?? ''}
+      businessLabel={businessStripLabel(template.source)}
+      letterhead={letterheadFromSource(template.source)}
       templateSource={template.source}
       fieldsSchema={(template.fields_schema ?? []) as any[]}
       disclosure={{
